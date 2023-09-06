@@ -1,0 +1,22 @@
+# screenshot folder
+screenshot
+
+# folder with generated tests files
+tests
+
+# file with working notes
+notes
+tempfile
+
+__pycache__
+.venv
+.pytest_cache
+test*.py
+
+# ignore playwright stuff
+playwright.config.ts
+package*
+node_modules/
+/test-results/
+/playwright-report/
+/playwright/.cache/
