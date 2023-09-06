@@ -7,6 +7,8 @@ import shutil
 from playwright import go_to_page, take_screenshot, params_to_pass
 from test_specification.example import example_test
 
+# keep track of whole history. Improve conversation managment. Let GPT know about the result of function call. Start stop conversation
+
 
 async def run_conversation(content):
     # Step 1: send the conversation and available functions to GPT
@@ -70,6 +72,12 @@ async def run_conversation(content):
                 "content": function_response,
             }
         )
+        second_response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-0613",
+            messages=messages,
+        )  # get a new response from GPT where it can see the function response
+
+        messages.append(second_response["choices"][0]["message"])
     print(messages)
     return messages
 
