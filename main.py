@@ -45,8 +45,9 @@ class GPT:
         ]
 
     async def run_conversation(self, step):
-        # Step 1: send the conversation and available functions to GPT
         self.messages.append({"role": "user", "content": step})
+        print(f"user: {step}")
+        # Step 1: send the conversation and available functions to GPT
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo-0613",
             messages=self.messages,
@@ -85,8 +86,13 @@ class GPT:
             )  # get a new response from GPT where it can see the function response
 
             self.messages.append(second_response["choices"][0]["message"])
-        print("Messages:")
-        print(self.messages)
+            print(f"assistant: {second_response['choices'][0]['message']}")
+            print(
+                f"Generated playwright code: {json.loads(function_response)['cmd']}")
+        else:
+            print(f"assistant: {response_message}")
+        # print("Messages:")
+        # print(self.messages)
         # return self.messages
 
     async def generate_code(self, scenario):
@@ -98,6 +104,17 @@ class GPT:
         steps = scenario['steps'].split("\n")
         for step in steps:
             await self.run_conversation(step)
+            while True:
+                user_input = input("Is this okay? (y/n) ")
+                if user_input.lower() not in ['y', 'n']:
+                    print("Please enter 'y' or 'n'")
+                    continue
+                else:
+                    if user_input == "n":
+                        new_step = input("Please enter new prompt: ")
+                        await self.run_conversation(new_step)
+                    elif user_input == "y":
+                        break
 
         # write footer
         with open('tempfile', 'a') as f:
