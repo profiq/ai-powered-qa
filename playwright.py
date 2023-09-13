@@ -9,7 +9,8 @@ params_to_pass = {
 def go_to_page(**kwargs):
     """Go to a page in the browser"""
     url_info = {key: kwargs.get(key)
-                for key in params_to_pass['take_screenshot']}
+                for key in params_to_pass['go_to_page']}
+    # here we will run the playwright code a set the status code. Then inform gpt about it.
     url_info['status'] = 200
     playwright_cmd = f"    await page.goto('{kwargs.get('url')}');\n"
     with open('tempfile', 'a') as f:
