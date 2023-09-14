@@ -1,5 +1,6 @@
 example = """Go to https://seznam.cz/
-Take screenshot full False to file path 'screenshot/indyriot/login.png"""
+Take screenshot full False to file path 'screenshot/login.png
+"""
 
 
 example_test = {
