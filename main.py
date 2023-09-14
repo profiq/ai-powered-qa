@@ -6,7 +6,7 @@ import json
 import os
 import logging
 import shutil
-from playwright import go_to_page, take_screenshot, params_to_pass
+from playwright import expect_text, go_to_page, take_screenshot, params_to_pass
 from test_specification.example import example_test
 
 # Improve conversation managment.
@@ -16,8 +16,11 @@ from test_specification.example import example_test
 # Start stop conversation
 # adding context and system messages to conversation
 # test how much we can send to the model (max 4k or 16k tokens for gpt 3.5)
+# write a login pattern and let gpt decide what to do. Test it.
+# Add a context and see if gpt can find if there is a text Seznam on the page. Test it. 
 
 # example taken from here https://platform.openai.com/docs/guides/gpt/function-calling
+
 
 class GPT:
 
@@ -53,7 +56,26 @@ class GPT:
                     },
                     "required": ["path"]
                 }
+            },
+            {
+                "name": "expect_text",
+                "description": "Expect text on the page",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "The text that you expect to be present on the page"
+                        },
+                        "index": {
+                            "type": "integer",
+                            "description": "The index of the element with the expected text"
+                        }
+                    },
+                    "required": ["text"]
+                }
             }
+
         ]
 
     async def run_conversation(self, step):
@@ -81,6 +103,7 @@ class GPT:
             available_functions = {
                 "go_to_page": go_to_page,
                 "take_screenshot": take_screenshot,
+                "expect_text": expect_text,
             }
             function_name = response_message["function_call"]["name"]
             fuction_to_call = available_functions[function_name]
@@ -114,7 +137,6 @@ class GPT:
                 f"Generated playwright code: {json.loads(function_response)['cmd']}")
         else:
             print(f"assistant: {response_message}")
-        
 
         # print("Messages:")
         # print(self.messages)
@@ -132,7 +154,8 @@ class GPT:
             await self.run_conversation(step)
             if chat_mode is True:
                 while True:
-                    user_input = input("Press enter to continue with next step or press 'y' to add another prompt.")
+                    user_input = input(
+                        "Press enter to continue with next step or press 'y' to add another prompt.")
                     if user_input.lower() not in ['y', '']:
                         print("Please enter 'y' or empty string")
                         continue
@@ -156,24 +179,28 @@ class GPT:
 
     def get_messages_for_gpt(self):
         # add system and context messages to the conversation
-        messages = [{"role": "system", "content": self.system_messages}, 
+        messages = [{"role": "system", "content": self.system_messages},
                     *self.messages]
-                    # *self.messages[-5:]]
+                    # , {"role": "system", "content": ""}]
+        # *self.messages[-5:]]
         return messages
 
 
 if __name__ == "__main__":
-    logging.basicConfig(filename='token_usage.log', encoding='utf-8', level=logging.INFO)
+    logging.basicConfig(filename='token_usage.log',
+                        encoding='utf-8', level=logging.INFO)
     open('token_usage.log', 'w').close()
-    parser = argparse.ArgumentParser(description='Generate playwright typescript code from test specification')
+    parser = argparse.ArgumentParser(
+        description='Generate playwright typescript code from test specification')
     parser.add_argument(
-        "-c", "--chat", help='Chat mode with agent. User can enter own real-time prompts', 
-            dest='chat_mode', action="store_true")
+        "-c", "--chat", help='Chat mode with agent. User can enter own real-time prompts',
+        dest='chat_mode', action="store_true")
     args = parser.parse_args()
     open('logfile', 'w').close()
     gpt = GPT()
     loop = asyncio.get_event_loop()
-    test_file = loop.run_until_complete(gpt.generate_code(example_test, args.chat_mode))
+    test_file = loop.run_until_complete(
+        gpt.generate_code(example_test, args.chat_mode))
     # print("Generated playwright typescript code: \n")
     # with open(test_file, 'r') as f:
     #     print(f.read())
