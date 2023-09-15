@@ -37,7 +37,6 @@ def expect_text(**kwargs):
     """Expect text on the page"""
     expect_info = {key: kwargs.get(key)
                        for key in params_to_pass['expect_text']}
-    expect_info['status'] = 200
     cmd = f"    expect(page.getByText(/{expect_info['text']}/).nth({expect_info.get('index') if not 'None' else 0})).toHaveText(/{expect_info['text']}/);\n"
     expect_info['cmd'] = cmd
     with open('tempfile', 'a') as f:

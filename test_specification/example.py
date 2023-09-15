@@ -1,6 +1,7 @@
 example = """Go to https://seznam.cz/
 Take screenshot full False to file path 'screenshot/login.png
-Expect text 'Seznam' on the page index 0"""
+Is there a text 'Seznam' on the page?
+"""
 
 
 example_test = {

@@ -21,12 +21,15 @@ from test_specification.example import example_test
 
 # example taken from here https://platform.openai.com/docs/guides/gpt/function-calling
 
+# truncate messages, do nejakeho maximalniho limitu
+# moznosti pro vylepseni: aby sam navrhl loginy, convertor html, pridat do kontextu, co je pageobject, zkusit do 16k dat stranku a at vymysli jak se prihlasit
+# nahled stranky do kontextu
 
 class GPT:
 
     def __init__(self):
         self.messages = []
-        self.system_messages = ""
+        self.system_messages = "You are helping me to automate UI testing. Other system messages will tell you, what is on the currecnt page"
         self.functions = [
             {
                 "name": "go_to_page",
@@ -88,6 +91,7 @@ class GPT:
             messages=messages_gpt,
             functions=self.functions,
             function_call="auto",  # auto is default, but we'll be explicit
+            temperature=0.1
         )
         response_message = response["choices"][0]["message"]
 
@@ -179,8 +183,8 @@ class GPT:
 
     def get_messages_for_gpt(self):
         # add system and context messages to the conversation
-        messages = [{"role": "system", "content": self.system_messages},
-                    *self.messages]
+        messages = [{"role": "system", "content": self.system_messages}, {"role": "system", "content": "there are only these text in the page: 'Seznam', 'Karafa'"},
+                    *self.messages[-10:]]
                     # , {"role": "system", "content": ""}]
         # *self.messages[-5:]]
         return messages
