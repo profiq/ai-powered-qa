@@ -6,8 +6,9 @@ import json
 import os
 import logging
 import shutil
-from playwright import expect_text, go_to_page, take_screenshot, params_to_pass
+# from playwright_mine import expect_text, go_to_page, take_screenshot, params_to_pass
 from test_specification.example import example_test
+from langchain.tools import format_tool_to_openai_function
 
 # Improve conversation managment.
 # keep track of whole history. Done - we pass all messages to chatgpt
@@ -17,69 +18,30 @@ from test_specification.example import example_test
 # adding context and system messages to conversation
 # test how much we can send to the model (max 4k or 16k tokens for gpt 3.5)
 # write a login pattern and let gpt decide what to do. Test it.
-# Add a context and see if gpt can find if there is a text Seznam on the page. Test it. 
+# Add a context and see if gpt can find if there is a text Seznam on the page. Test it.
 
 # example taken from here https://platform.openai.com/docs/guides/gpt/function-calling
 
 # truncate messages, do nejakeho maximalniho limitu
 # moznosti pro vylepseni: aby sam navrhl loginy, convertor html, pridat do kontextu, co je pageobject, zkusit do 16k dat stranku a at vymysli jak se prihlasit
 # nahled stranky do kontextu
+# now working on adding tools to our agent
+    # how to define a tool: https://python.langchain.com/docs/modules/agents/tools/custom_tools
+    # now find how to use the tools in out agent
+    # Using official langchain, but added some changes from our fork
+
+from langchain.tools.playwright.utils import create_async_playwright_browser
+from langchain.agents.agent_toolkits import PlayWrightBrowserToolkit
+
 
 class GPT:
 
-    def __init__(self):
+    def __init__(self, functions):
         self.messages = []
-        self.system_messages = "You are helping me to automate UI testing. Other system messages will tell you, what is on the currecnt page"
-        self.functions = [
-            {
-                "name": "go_to_page",
-                "description": "Go to a page in the browser",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "url": {"type": "string", "description": "The URL to navigate to"}
-                    }
-                },
-                "required": ["url"],
-            },
-            {
-                "name": "take_screenshot",
-                "description": "Take screenshot of the page",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "The path to save the screenshot"
-                        },
-                        "full_page": {
-                            "type": "boolean",
-                            "description": "Whether to take a screenshot of the full page or just the viewport"
-                        }
-                    },
-                    "required": ["path"]
-                }
-            },
-            {
-                "name": "expect_text",
-                "description": "Expect text on the page",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "text": {
-                            "type": "string",
-                            "description": "The text that you expect to be present on the page"
-                        },
-                        "index": {
-                            "type": "integer",
-                            "description": "The index of the element with the expected text"
-                        }
-                    },
-                    "required": ["text"]
-                }
-            }
-
-        ]
+        self.system_messages = "You are helping me to automate UI testing. Find page content in other system messages and you can use it to answer my questions."
+        self.functions = functions
+        available_functions = {}
+        params_to_pass = {}
 
     async def run_conversation(self, step):
         self.messages.append({"role": "user", "content": step})
@@ -91,7 +53,7 @@ class GPT:
             messages=messages_gpt,
             functions=self.functions,
             function_call="auto",  # auto is default, but we'll be explicit
-            temperature=0.1
+            temperature=0
         )
         response_message = response["choices"][0]["message"]
 
@@ -129,6 +91,7 @@ class GPT:
             second_response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo-0613",
                 messages=messages_gpt,
+                temperature=0
             )  # get a new response from GPT where it can see the function response
 
             tokens = second_response["usage"]
@@ -183,9 +146,10 @@ class GPT:
 
     def get_messages_for_gpt(self):
         # add system and context messages to the conversation
-        messages = [{"role": "system", "content": self.system_messages}, {"role": "system", "content": "there are only these text in the page: 'Seznam', 'Karafa'"},
+        messages = [{"role": "system", "content": self.system_messages}, {"role": "system", "content": "This is the \
+                                                                          page content. text: ['Seznam', 'ball']"},
                     *self.messages[-10:]]
-                    # , {"role": "system", "content": ""}]
+        # , {"role": "system", "content": ""}]
         # *self.messages[-5:]]
         return messages
 
@@ -201,10 +165,21 @@ if __name__ == "__main__":
         dest='chat_mode', action="store_true")
     args = parser.parse_args()
     open('logfile', 'w').close()
-    gpt = GPT()
-    loop = asyncio.get_event_loop()
-    test_file = loop.run_until_complete(
-        gpt.generate_code(example_test, args.chat_mode))
+
+   # Initialize the playwright toolkit / tools
+    async_browser = create_async_playwright_browser(headless=False)
+    toolkit = PlayWrightBrowserToolkit.from_browser(
+        async_browser=async_browser)
+    tools = toolkit.get_tools()
+    functions = [format_tool_to_openai_function(t) for t in tools]
+    for function in functions:
+        print(function)
+        print('\n')
+
+    # gpt = GPT(functions=functions)
+    # loop = asyncio.get_event_loop()
+    # test_file = loop.run_until_complete(
+    #     gpt.generate_code(example_test, args.chat_mode))
     # print("Generated playwright typescript code: \n")
     # with open(test_file, 'r') as f:
     #     print(f.read())
