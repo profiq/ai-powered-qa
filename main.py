@@ -26,9 +26,10 @@ from langchain.tools import format_tool_to_openai_function
 # moznosti pro vylepseni: aby sam navrhl loginy, convertor html, pridat do kontextu, co je pageobject, zkusit do 16k dat stranku a at vymysli jak se prihlasit
 # nahled stranky do kontextu
 # now working on adding tools to our agent
-    # how to define a tool: https://python.langchain.com/docs/modules/agents/tools/custom_tools
-    # now find how to use the tools in out agent
-    # Using official langchain, but added some changes from our fork
+# how to define a tool: https://python.langchain.com/docs/modules/agents/tools/custom_tools
+# now find how to use the tools in out agent
+# Using official langchain, but added some changes from our fork
+# make more phases,
 
 from langchain.tools.playwright.utils import create_async_playwright_browser
 from langchain.agents.agent_toolkits import PlayWrightBrowserToolkit
@@ -70,34 +71,30 @@ available_functions = {
     "take_screenshot": TakeScreenshotTool,
 }
 
+
 class GPT:
 
     def __init__(self, functions):
         self.messages = []
         self.system_messages = "You are helping me to automate UI testing. Find page content in other system messages and you can use it to answer my questions."
         self.functions = functions
-        available_functions = {}
-        params_to_pass = {}
 
-    async def run_conversation(self, step):
-        self.messages.append({"role": "user", "content": step})
-        print(f"user: {step}")
+    async def run_conversation(self, message):
+        self.messages.append(message)
+        print(message)
         # Step 1: send the conversation and available functions to GPT
         messages_gpt = self.get_messages_for_gpt()
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo-0613",
-            messages=messages_gpt,
-            functions=self.functions,
-            function_call="auto",  # auto is default, but we'll be explicit
-            temperature=0
-        )
+        response = self.gpt_api_request(messages_gpt)
         response_message = response["choices"][0]["message"]
-
         tokens = response["usage"]
         logging.info(f"gpt context window: {messages_gpt}")
         logging.info(f"Tokens used so far (response): {tokens}\n")
-
+        
         self.messages.append(response_message)
+        self.write_log()
+        return response_message
+        
+
         # Step 2: check if GPT wanted to call a function
         if response_message.get("function_call"):
             # Step 3: call the function
@@ -107,7 +104,7 @@ class GPT:
             function_to_call = available_functions[function_name]
             function_args = json.loads(
                 response_message["function_call"]["arguments"])
-            function_tool = function_to_call(async_browser=async_browser)   
+            function_tool = function_to_call(async_browser=async_browser)
             function_response = await function_tool._arun(**function_args)
 
             # Step 4: send the info on the function call and function response to GPT
@@ -120,11 +117,8 @@ class GPT:
                 }
             )
             messages_gpt = self.get_messages_for_gpt()
-            second_response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo-0613",
-                messages=messages_gpt,
-                temperature=0
-            )  # get a new response from GPT where it can see the function response
+            # get a new response from GPT where it can see the function response
+            second_response = self.gpt_api_request(messages_gpt)
 
             tokens = second_response["usage"]
             logging.info(f"gpt context window:  {messages_gpt}")
@@ -137,10 +131,6 @@ class GPT:
         else:
             print(f"assistant: {response_message}")
 
-        # print("Messages:")
-        # print(self.messages)
-        # return self.messages
-
     async def generate_code(self, scenario, chat_mode=False):
         with open('tempfile', 'w') as f:
             f.write("import { test, expect } from '@playwright/test';\n\n")
@@ -148,25 +138,67 @@ class GPT:
                 f"test('{'My example test name'}', async ({{ page }}) => {{\n")
         # append a system message to influence the AIs behaviour
 
-        steps = scenario['steps'].splitlines()
-        for step in steps:
-            await self.run_conversation(step)
-            if chat_mode is True:
-                while True:
-                    user_input = input(
-                        "Press enter to continue with next step or press 'y' to add another prompt.")
-                    if user_input.lower() not in ['y', '']:
-                        print("Please enter 'y' or empty string")
-                        continue
-                    else:
-                        if user_input == 'y':
-                            new_step = input("Please enter new prompt: ")
-                            await self.run_conversation(new_step)
-                        elif user_input == '':
-                            break
+        # steps = scenario['steps'].splitlines()
+        keep_agent_running = True
 
-        with open('logfile', 'a') as f:
-            f.write(json.dumps(self.messages, indent=4))
+        while keep_agent_running:
+            prompt_input = input("Enter a prompt or type quit.\n")
+            if prompt_input.lower() in ['']:
+                print("Please enter prompt or type quit.")
+                continue
+            else:
+                if prompt_input == 'quit':
+                    keep_agent_running = False
+                else:
+                    function_call = True
+                    gpt_response = await self.run_conversation(self.construct_message(role="user", content=prompt_input))
+                    self.write_log()
+                    while function_call:
+                        if gpt_response.get("function_call"):
+                            # gpt wants to call a function, first validate with user
+                            editing = True
+                            while editing:                        
+                                print(f"Assistant wants to call function: {gpt_response['function_call']['name'].strip()} \
+                                    with arguments: {gpt_response['function_call']['arguments'].strip()}")
+                                edit_input = input("Call function (press enter) or edit function call (e)?\n")
+                                if edit_input == 'e':
+                                    edited_function_call = input("Enter function call:\n")
+                                    # TODO editing not supported yet
+                                    if edited_function_call == '':
+                                        edited_function_call = gpt_response['function_call']['name']
+                                    edited_function_arguments = input("Enter function arguments:\n")
+                                    if edited_function_arguments == '':
+                                        edited_function_arguments = gpt_response['function_call']['arguments']
+
+                                    self.validate_function_call(edited_function_call, edited_function_arguments)
+                                    gpt_response['function_call']['name'] = edited_function_call
+                                    gpt_response['function_call']['arguments'] = edited_function_arguments
+                                elif edit_input == '':
+                                    editing = False
+                                elif edit_input == 'quit':
+                                    editing = False
+                                    function_call = False
+                                    keep_agent_running = False
+                                elif edit_input == 'p':
+                                    editing = False
+                                    function_call = False
+                                else:
+                                    print("Please enter e or press enter.")
+                            # call the function
+                            function_name = gpt_response["function_call"]["name"]
+                            function_to_call = available_functions[function_name]
+                            function_args = json.loads(
+                                gpt_response["function_call"]["arguments"])
+                            function_tool = function_to_call(async_browser=async_browser)
+                            function_response = await function_tool._arun(**function_args)
+                            
+                            gpt_response = await self.run_conversation(self.construct_message(role="function", name=function_name, content=function_response))
+                            self.write_log()
+                        else:
+                            # no function call, print response and ask for new prompt
+                            print(gpt_response)
+                            function_call = False
+
         # write footer
         with open('tempfile', 'a') as f:
             f.write("});\n\n")
@@ -181,10 +213,31 @@ class GPT:
         messages = [{"role": "system", "content": self.system_messages}, {"role": "system", "content": "This is the \
                                                                           page content. text: ['Seznam', 'ball']"},
                     *self.messages[-10:]]
-        # , {"role": "system", "content": ""}]
-        # *self.messages[-5:]]
         return messages
 
+    def gpt_api_request(self, messages_gpt):
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-0613",
+            messages=messages_gpt,
+            functions=self.functions,
+            function_call="auto",  # auto is default, but we'll be explicit
+            temperature=0
+        )
+        return response
+
+    def validate_function_call(self, function_call_name, function_call_arguments):
+        if function_call_name not in available_functions:
+            return False
+        function_arguments = function_call_arguments
+            # TODO validate arguments
+        return True
+    
+    def construct_message(self, **kwargs):
+        return { k: v for k,v in kwargs.items()}
+        
+    def write_log(self):
+        with open('logfile', 'w') as f:
+            f.write(json.dumps(self.messages, indent=4))
 
 if __name__ == "__main__":
     logging.basicConfig(filename='token_usage.log',
@@ -204,24 +257,13 @@ if __name__ == "__main__":
         async_browser=async_browser)
     tools = toolkit.get_tools()
     functions = [format_tool_to_openai_function(t) for t in tools]
-    for f in functions:
-        print(f['name'], f["parameters"]['title'])
-        print('\n')
-    
 
-    
-    # available_functions = {function['name'] : getattr(f"{function['name']}", function['parameters']['title'])() for function in functions}
-    # print(available_functions)
-    # from langchain.tools.playwright.click import ClickTool
-    # available_functions['click_element']._arun() 
-    # ClickTool(async_browser=async_browser)._arun()
-
-    # gpt = GPT(functions=functions)
-    # loop = asyncio.get_event_loop()
-    # test_file = loop.run_until_complete(
-    #     gpt.generate_code(example_test, args.chat_mode))
-    # print("Generated playwright typescript code: \n")
-    # with open(test_file, 'r') as f:
-    #     print(f.read())
+    gpt = GPT(functions=functions)
+    loop = asyncio.get_event_loop()
+    test_file = loop.run_until_complete(
+        gpt.generate_code(example_test, args.chat_mode))
+    print("Generated playwright typescript code: \n")
+    with open(test_file, 'r') as f:
+        print(f.read())
 
     # Why is there previous_webpage function? What does it mean???
