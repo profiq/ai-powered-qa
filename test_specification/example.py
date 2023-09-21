@@ -1,8 +1,8 @@
 example = """Go to https://seznam.cz/
-Take screenshot full False to file path 'screenshot/login.png
-Is there a text 'Seznam' on the page?
+Is there a text 'Novinky' on the page?
 """
 
+#Take screenshot full False to file path 'screenshot/login.png
 
 example_test = {
     "name": "gmail_login",

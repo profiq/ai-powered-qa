@@ -32,7 +32,43 @@ from langchain.tools import format_tool_to_openai_function
 
 from langchain.tools.playwright.utils import create_async_playwright_browser
 from langchain.agents.agent_toolkits import PlayWrightBrowserToolkit
+from langchain.tools.playwright.click import ClickTool
+from langchain.tools.playwright.click_by_text import ClickByTextTool
+from langchain.tools.playwright.iframe_click import IframeClickTool
+from langchain.tools.playwright.iframe_click_by_text import IframeClickByTextTool
+from langchain.tools.playwright.iframe_expect_hidden import IframeExpectHiddenTool
+from langchain.tools.playwright.iframe_upload import IframeUploadTool
+from langchain.tools.playwright.current_page import CurrentWebPageTool
+from langchain.tools.playwright.expect_test_id import ExpectTestIdTool
+from langchain.tools.playwright.expect_text import ExpectTextTool
+from langchain.tools.playwright.expect_title import ExpectTitleTool
+from langchain.tools.playwright.extract_hyperlinks import ExtractHyperlinksTool
+from langchain.tools.playwright.extract_text import ExtractTextTool
+from langchain.tools.playwright.fill import FillTool
+from langchain.tools.playwright.get_elements import GetElementsTool
+from langchain.tools.playwright.navigate import NavigateTool
+from langchain.tools.playwright.navigate_back import NavigateBackTool
+from langchain.tools.playwright.take_screenshot import TakeScreenshotTool
 
+available_functions = {
+    "click_element": ClickTool,
+    "click_by_text": ClickByTextTool,
+    "iframe_click": IframeClickTool,
+    "iframe_click_by_text": IframeClickByTextTool,
+    "iframe_expect_hidden": IframeExpectHiddenTool,
+    "iframe_upload": IframeUploadTool,
+    "current_page": CurrentWebPageTool,
+    "expect_test_id": ExpectTestIdTool,
+    "expect_text": ExpectTextTool,
+    "expect_title": ExpectTitleTool,
+    "extract_hyperlinks": ExtractHyperlinksTool,
+    "extract_text": ExtractTextTool,
+    "fill_element": FillTool,
+    "get_elements": GetElementsTool,
+    "navigate_browser": NavigateTool,
+    "navigate_back": NavigateBackTool,
+    "take_screenshot": TakeScreenshotTool,
+}
 
 class GPT:
 
@@ -66,17 +102,13 @@ class GPT:
         if response_message.get("function_call"):
             # Step 3: call the function
             # Note: the JSON response may not always be valid; be sure to handle errors
-            available_functions = {
-                "go_to_page": go_to_page,
-                "take_screenshot": take_screenshot,
-                "expect_text": expect_text,
-            }
+
             function_name = response_message["function_call"]["name"]
-            fuction_to_call = available_functions[function_name]
+            function_to_call = available_functions[function_name]
             function_args = json.loads(
                 response_message["function_call"]["arguments"])
-            function_response = fuction_to_call(
-                **{key: function_args.get(key) for key in params_to_pass[function_name]})
+            function_tool = function_to_call(async_browser=async_browser)   
+            function_response = await function_tool._arun(**function_args)
 
             # Step 4: send the info on the function call and function response to GPT
             # extend conversation with assistant's reply
@@ -101,7 +133,7 @@ class GPT:
             self.messages.append(second_response["choices"][0]["message"])
             print(f"assistant: {second_response['choices'][0]['message']}")
             print(
-                f"Generated playwright code: {json.loads(function_response)['cmd']}")
+                f"Tool response {function_response}")
         else:
             print(f"assistant: {response_message}")
 
@@ -172,9 +204,17 @@ if __name__ == "__main__":
         async_browser=async_browser)
     tools = toolkit.get_tools()
     functions = [format_tool_to_openai_function(t) for t in tools]
-    for function in functions:
-        print(function)
+    for f in functions:
+        print(f['name'], f["parameters"]['title'])
         print('\n')
+    
+
+    
+    # available_functions = {function['name'] : getattr(f"{function['name']}", function['parameters']['title'])() for function in functions}
+    # print(available_functions)
+    # from langchain.tools.playwright.click import ClickTool
+    # available_functions['click_element']._arun() 
+    # ClickTool(async_browser=async_browser)._arun()
 
     # gpt = GPT(functions=functions)
     # loop = asyncio.get_event_loop()
@@ -183,3 +223,5 @@ if __name__ == "__main__":
     # print("Generated playwright typescript code: \n")
     # with open(test_file, 'r') as f:
     #     print(f.read())
+
+    # Why is there previous_webpage function? What does it mean???
