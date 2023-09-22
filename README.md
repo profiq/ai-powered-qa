@@ -14,4 +14,4 @@ This repo is a demonstration of how to use GPT-3 to generate text using Playwrig
 - You will enter a User-agent loop. You can prompt, validate and communicate with our written "agent".
 
 ## How it works?
-![alt text](./images/user-agent-loop)
+![alt text](./images/user-agent-loop.png)
