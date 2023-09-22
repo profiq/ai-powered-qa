@@ -131,73 +131,74 @@ class GPT:
         else:
             print(f"assistant: {response_message}")
 
-    async def generate_code(self, scenario, chat_mode=False):
-        with open('tempfile', 'w') as f:
-            f.write("import { test, expect } from '@playwright/test';\n\n")
-            f.write(
-                f"test('{'My example test name'}', async ({{ page }}) => {{\n")
+    async def user_agent_loop(self):
+        self.write_test_header()
         # append a system message to influence the AIs behaviour
 
-        # steps = scenario['steps'].splitlines()
         keep_agent_running = True
 
         while keep_agent_running:
-            prompt_input = input("Enter a prompt or type quit.\n")
+            prompt_input = input("Please enter a prompt or type quit.\n")
             if prompt_input.lower() in ['']:
-                print("Please enter prompt or type quit.")
                 continue
+            elif prompt_input == 'quit':
+                keep_agent_running = False
             else:
-                if prompt_input == 'quit':
-                    keep_agent_running = False
-                else:
-                    function_call = True
-                    gpt_response = await self.run_conversation(self.construct_message(role="user", content=prompt_input))
-                    self.write_log()
-                    while function_call:
-                        if gpt_response.get("function_call"):
-                            # gpt wants to call a function, first validate with user
-                            editing = True
-                            while editing:                        
-                                print(f"Assistant wants to call function: {gpt_response['function_call']['name'].strip()} \
-                                    with arguments: {gpt_response['function_call']['arguments'].strip()}")
-                                edit_input = input("Call function (press enter) or edit function call (e)?\n")
-                                if edit_input == 'e':
-                                    edited_function_call = input("Enter function call:\n")
-                                    # TODO editing not supported yet
-                                    if edited_function_call == '':
-                                        edited_function_call = gpt_response['function_call']['name']
-                                    edited_function_arguments = input("Enter function arguments:\n")
-                                    if edited_function_arguments == '':
-                                        edited_function_arguments = gpt_response['function_call']['arguments']
+                function_call = True
+                gpt_response = await self.run_conversation(self.construct_message(role="user", content=prompt_input))
+                self.write_log()
+                while function_call:
+                    if gpt_response.get("function_call"):
+                        # gpt wants to call a function, first validate with user
+                        editing = True
+                        while editing:                        
+                            print(f"Assistant wants to call function: {gpt_response['function_call']['name'].strip()} \
+                                with arguments: {gpt_response['function_call']['arguments'].strip()}")
+                            edit_input = input("Call function (press enter) or edit function call (e)?\n")
+                            if edit_input == 'e':
+                                edited_response = gpt_response
+                                edited_function_call = input("Enter function call:\n")
+                                # TODO editing not supported yet
+                                if edited_function_call == '':
+                                    edited_function_call = gpt_response['function_call']['name']
+                                # edited_function_arguments = input("Enter function arguments:\n")
+                                self.get_available_arguments()
+                                if edited_function_arguments == '':
+                                    edited_function_arguments = gpt_response['function_call']['arguments']
 
-                                    self.validate_function_call(edited_function_call, edited_function_arguments)
-                                    gpt_response['function_call']['name'] = edited_function_call
-                                    gpt_response['function_call']['arguments'] = edited_function_arguments
-                                elif edit_input == '':
-                                    editing = False
-                                elif edit_input == 'quit':
-                                    editing = False
-                                    function_call = False
-                                    keep_agent_running = False
-                                elif edit_input == 'p':
-                                    editing = False
-                                    function_call = False
-                                else:
-                                    print("Please enter e or press enter.")
-                            # call the function
-                            function_name = gpt_response["function_call"]["name"]
-                            function_to_call = available_functions[function_name]
-                            function_args = json.loads(
-                                gpt_response["function_call"]["arguments"])
-                            function_tool = function_to_call(async_browser=async_browser)
-                            function_response = await function_tool._arun(**function_args)
-                            
-                            gpt_response = await self.run_conversation(self.construct_message(role="function", name=function_name, content=function_response))
-                            self.write_log()
-                        else:
-                            # no function call, print response and ask for new prompt
-                            print(gpt_response)
-                            function_call = False
+                                if not self.validate_function_call(edited_function_call, edited_function_arguments):
+                                    print("Function call is not valid. Please try again.")
+                                    continue
+                                gpt_response['function_call']['name'] = edited_function_call
+                                gpt_response['function_call']['arguments'] = edited_function_arguments
+                            elif edit_input == '':
+                                editing = False
+                                break
+                            elif edit_input == 'quit':
+                                editing = False
+                                function_call = False
+                                keep_agent_running = False
+                                break
+                            elif edit_input == 'p':
+                                editing = False
+                                function_call = False
+                                break
+                            else:
+                                print("Please enter e or press enter.")
+                        # call the function
+                        function_name = gpt_response["function_call"]["name"]
+                        function_to_call = available_functions[function_name]
+                        function_args = json.loads(
+                            gpt_response["function_call"]["arguments"])
+                        function_tool = function_to_call(async_browser=async_browser)
+                        function_response = await function_tool._arun(**function_args)
+                        
+                        gpt_response = await self.run_conversation(self.construct_message(role="function", name=function_name, content=function_response))
+                        self.write_log()
+                    else:
+                        # no function call, print response and ask for new prompt
+                        print(gpt_response)
+                        function_call = False
 
         # write footer
         with open('tempfile', 'a') as f:
@@ -228,8 +229,6 @@ class GPT:
     def validate_function_call(self, function_call_name, function_call_arguments):
         if function_call_name not in available_functions:
             return False
-        function_arguments = function_call_arguments
-            # TODO validate arguments
         return True
     
     def construct_message(self, **kwargs):
@@ -238,6 +237,19 @@ class GPT:
     def write_log(self):
         with open('logfile', 'w') as f:
             f.write(json.dumps(self.messages, indent=4))
+    
+    def get_available_arguments(self, function_call):
+        for function in self.functions:
+            if function['name'] == function_call:
+                return function['parameters']['properties']
+        else:
+            return None
+    
+    def write_test_header(self):
+        with open('tempfile', 'w') as f:
+            f.write("import { test, expect } from '@playwright/test';\n\n")
+            f.write(
+                f"test('{'My example test name'}', async ({{ page }}) => {{\n")
 
 if __name__ == "__main__":
     logging.basicConfig(filename='token_usage.log',
@@ -257,11 +269,11 @@ if __name__ == "__main__":
         async_browser=async_browser)
     tools = toolkit.get_tools()
     functions = [format_tool_to_openai_function(t) for t in tools]
-
+    # print(functions[2]['parameters']['properties'])
     gpt = GPT(functions=functions)
     loop = asyncio.get_event_loop()
     test_file = loop.run_until_complete(
-        gpt.generate_code(example_test, args.chat_mode))
+        gpt.user_agent_loop())
     print("Generated playwright typescript code: \n")
     with open(test_file, 'r') as f:
         print(f.read())
