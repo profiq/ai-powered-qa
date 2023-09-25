@@ -246,10 +246,6 @@ class GPT:
 if __name__ == "__main__":
     logging.basicConfig(filename='token_usage.log',
                         encoding='utf-8', level=logging.INFO)
-    parser = argparse.ArgumentParser(
-        description='Generate playwright typescript code from test specification')
-    parser.add_argument()
-    args = parser.parse_args()
 
     open('token_usage.log', 'w').close()
     open('conversation_history.log', 'w').close()
