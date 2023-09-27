@@ -1,12 +1,13 @@
-import argparse
 import asyncio
-import openai
 import json
 import logging
 import shutil
-import os
-import sys
 
+import openai
+
+from langchain_modules.toolkit import PlayWrightBrowserToolkit
+from langchain_modules.tools import *
+from langchain_modules.tools.playwright.utils import create_async_playwright_browser
 
 # Things to improve:
 
@@ -33,36 +34,6 @@ import sys
 #   - Step 3: call the function\
 #   - Step 4: send the info on the function call and function response to GPT
 
-
-
-
-# Uncomment this if you have forked langchain
-# expected the langchain to be in the same folder as this repo
-
-# import_path = os.path.join(os.path.dirname(sys.path[0]), 'langchain/libs/langchain/')
-# sys.path.append(import_path)
-
-from langchain.tools import format_tool_to_openai_function
-from langchain.tools.playwright.utils import create_async_playwright_browser
-from langchain.agents.agent_toolkits import PlayWrightBrowserToolkit
-from langchain.tools.playwright.click import ClickTool
-from langchain.tools.playwright.click_by_text import ClickByTextTool
-from langchain.tools.playwright.iframe_click import IframeClickTool
-from langchain.tools.playwright.iframe_click_by_text import IframeClickByTextTool
-from langchain.tools.playwright.iframe_expect_hidden import IframeExpectHiddenTool
-from langchain.tools.playwright.iframe_upload import IframeUploadTool
-from langchain.tools.playwright.current_page import CurrentWebPageTool
-from langchain.tools.playwright.expect_test_id import ExpectTestIdTool
-from langchain.tools.playwright.expect_text import ExpectTextTool
-from langchain.tools.playwright.expect_title import ExpectTitleTool
-from langchain.tools.playwright.extract_hyperlinks import ExtractHyperlinksTool
-from langchain.tools.playwright.extract_text import ExtractTextTool
-from langchain.tools.playwright.fill import FillTool
-from langchain.tools.playwright.get_elements import GetElementsTool
-from langchain.tools.playwright.navigate import NavigateTool
-from langchain.tools.playwright.navigate_back import NavigateBackTool
-from langchain.tools.playwright.take_screenshot import TakeScreenshotTool
-
 available_functions = {
     "click_element": ClickTool,
     "click_by_text": ClickByTextTool,
@@ -76,11 +47,13 @@ available_functions = {
     "expect_title": ExpectTitleTool,
     "extract_hyperlinks": ExtractHyperlinksTool,
     "extract_text": ExtractTextTool,
-    "fill_element": FillTool,
+    "fill_element": FillTextTool,
     "get_elements": GetElementsTool,
     "navigate_browser": NavigateTool,
     "navigate_back": NavigateBackTool,
     "take_screenshot": TakeScreenshotTool,
+    "press_key": PressTool,
+    "wait": WaitTool,
 }
 
 
