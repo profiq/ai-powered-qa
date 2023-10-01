@@ -15,23 +15,23 @@ class PlayWrightBrowserToolkit(PlayWrightBrowserToolkit):
         tool_classes: List[Type[BaseBrowserTool]] = [
             ClickTool,
             NavigateTool,
-            NavigateBackTool,
-            ExtractTextTool,
-            ExtractHyperlinksTool,
-            GetElementsTool,
-            CurrentWebPageTool,
-            ClickByTextTool,  # new actions
-            IframeClickTool,
-            IframeClickByTextTool,
-            IframeExpectHiddenTool,
-            IframeUploadTool,
-            ExpectTestIdTool,
-            ExpectTextTool,
-            ExpectTitleTool,
+            # NavigateBackTool,
+            # ExtractTextTool,
+            # ExtractHyperlinksTool,
+            # GetElementsTool,
+            # CurrentWebPageTool,
+            # ClickByTextTool,  # new actions
+            # IframeClickTool,
+            # IframeClickByTextTool,
+            # IframeExpectHiddenTool,
+            # IframeUploadTool,
+            # ExpectTestIdTool,
+            # ExpectTextTool,
+            # ExpectTitleTool,
             FillTextTool,
-            TakeScreenshotTool,
-            PressTool,
-            WaitTool
+            # TakeScreenshotTool,
+            # PressTool,
+            # WaitTool,
         ]
 
         tools = [

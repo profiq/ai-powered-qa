@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Optional, Type
 
-from langchain.callbacks.manager import AsyncCallbackManagerForToolRun, CallbackManagerForToolRun
+from langchain.callbacks.manager import (
+    AsyncCallbackManagerForToolRun,
+    CallbackManagerForToolRun,
+)
 from langchain.tools.playwright.base import BaseBrowserTool
 from langchain.tools.playwright.utils import aget_current_page, get_current_page
 from pydantic import BaseModel, Field
@@ -37,7 +40,7 @@ class NavigateTool(BaseBrowserTool):
 
         # write playwright command to temp file
         playwright_cmd = f"    page.goto('{url}');\n"
-        with open('tempfile', 'a') as f:
+        with open("tempfile", "a") as f:
             f.write(playwright_cmd)
 
         return f"Navigating to {url} returned status code {status}"
@@ -55,9 +58,11 @@ class NavigateTool(BaseBrowserTool):
 
         try:
             response = await page.goto(url)
+            print(response)
             status = response.status if response else "unknown"
-            await awrite_to_file(msg=f'    {playwright_cmd}')
+            await awrite_to_file(msg=f"    {playwright_cmd}")
         except Exception as e:
+            print(e)
             await awrite_fail_to_file(msg=playwright_cmd, page=page)
             return f"Unable to navigate to {url}"
         return f"Navigating to {url} returned status code {status}"
