@@ -23,7 +23,7 @@ from langchain.vectorstores import FAISS
 
 from dotenv import load_dotenv
 
-from utils import mark_invisible_elements, strip_html_to_structure
+from utils import amark_invisible_elements, strip_html_to_structure
 
 load_dotenv()  # load environment variables from .env file
 
@@ -359,7 +359,7 @@ class GPT:
 
         # print(html_content)
 
-        await mark_invisible_elements(page)
+        await amark_invisible_elements(page)
 
         html_content = await page.content()
         stripped_html = strip_html_to_structure(html_content)

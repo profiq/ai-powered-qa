@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup, Tag
 
 
-async def is_element_in_viewport(element, viewport_width, viewport_height):
+async def ais_element_in_viewport(element, viewport_width, viewport_height):
     bounding_box = await element.bounding_box()
     if not bounding_box:
         return False
@@ -19,7 +19,7 @@ async def is_element_in_viewport(element, viewport_width, viewport_height):
     )
 
 
-async def mark_invisible_elements(page):
+async def amark_invisible_elements(page):
     # Get viewport size
     viewport_size = page.viewport_size
     viewport_width = viewport_size["width"]
@@ -28,8 +28,40 @@ async def mark_invisible_elements(page):
     body = await page.query_selector("body")
     for element in await body.query_selector_all("*"):
         # TODO: mark visible elements too?
-        if not await is_element_in_viewport(element, viewport_width, viewport_height):
+        if not await ais_element_in_viewport(element, viewport_width, viewport_height):
             await element.evaluate('el => el.setAttribute("data-visible", "false")')
+
+
+def is_element_in_viewport(element, viewport_width, viewport_height):
+    bounding_box = element.bounding_box()
+    if not bounding_box:
+        return False
+    x, y, width, height = (
+        bounding_box["x"],
+        bounding_box["y"],
+        bounding_box["width"],
+        bounding_box["height"],
+    )
+    return (
+        x >= 0
+        and y >= 0
+        and x + width <= viewport_width
+        and y + height <= viewport_height
+    )
+
+
+def mark_invisible_elements(page):
+    # Get viewport size
+    viewport_size = page.viewport_size
+    viewport_width = viewport_size["width"]
+    viewport_height = viewport_size["height"]
+
+    body = page.query_selector("body")
+    for element in body.query_selector_all("*"):
+        if is_element_in_viewport(element, viewport_width, viewport_height):
+            element.evaluate('el => el.setAttribute("data-visible", "true")')
+        else:
+            element.evaluate('el => el.setAttribute("data-visible", "false")')
 
 
 def clean_attributes(tag):
