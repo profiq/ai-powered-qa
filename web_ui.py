@@ -26,6 +26,8 @@ from langchain.schema.messages import (
     SystemMessage,
 )
 from langchain.tools.convert_to_openai import format_tool_to_openai_function
+from callback_handler import MyHandler
+
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -43,6 +45,7 @@ if "ai_message_function_arguments" not in st.session_state:
     st.session_state.ai_message_function_arguments = ""
 
 
+
 @st.cache_data
 def load_conversation_history(project_name, test_case):
     try:
@@ -56,7 +59,8 @@ def load_conversation_history(project_name, test_case):
 
 
 @st.cache_resource
-def get_llm():
+def get_llm(project_name, test_case):
+
     async_browser = st.session_state.browser
     toolkit = PlayWrightBrowserToolkit.from_browser(async_browser=async_browser)
     tools = toolkit.get_tools()
@@ -64,6 +68,8 @@ def get_llm():
         model="gpt-3.5-turbo",
         streaming=True,
         temperature=0,
+        verbose=True,
+        callbacks=[MyHandler(st.container(), project_name, test_case)]
     )
     return llm, tools
 
@@ -151,6 +157,7 @@ def save_conversation_history(project_name: str, test_case: str):
 
 
 async def main():
+
     # Initialize browser
     if st.session_state.browser is None:
         st.session_state.browser = await get_browser()
@@ -231,13 +238,19 @@ async def main():
 
     # Call LLM
 
-    llm, tools = get_llm()
+    llm, tools = get_llm(project_name, test_case)
+
+    # write prompt messages to a file, indicating what is the current context
+    with open("prompt_messages.log", "a") as f:
+        print(f"{'-' * 30}\nCurrent context window\n", file=f)
+        print(prompt_messages, file=f)
 
     functions = [format_tool_to_openai_function(t) for t in tools]
     name_to_tool_map = {tool.name: tool for tool in tools}
     response = llm(
         prompt_messages,
         functions=functions,
+        # callbacks=[MyHandler(st.container(), project_name, test_case)]
     )
 
     st.session_state.ai_message_content = response.content
