@@ -1,3 +1,20 @@
+from logging_handler import LoggingHandler
+from langchain.tools.convert_to_openai import format_tool_to_openai_function
+from langchain.schema.messages import (
+    AIMessage,
+    FunctionMessage,
+    HumanMessage,
+    SystemMessage,
+)
+from langchain.chat_models import ChatOpenAI
+from utils import amark_invisible_elements, strip_html_to_structure
+from langchain.tools.playwright.utils import (
+    aget_current_page,
+)
+from langchain_modules.toolkit import PlayWrightBrowserToolkit
+import streamlit as st
+import json
+from dotenv import load_dotenv
 import asyncio
 import datetime
 import os
@@ -5,28 +22,8 @@ import os
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
-from dotenv import load_dotenv
 
 load_dotenv()
-
-import json
-import streamlit as st
-
-from langchain_modules.toolkit import PlayWrightBrowserToolkit
-from langchain.tools.playwright.utils import (
-    aget_current_page,
-)
-from utils import amark_invisible_elements, strip_html_to_structure
-
-from langchain.chat_models import ChatOpenAI
-from langchain.schema.messages import (
-    AIMessage,
-    FunctionMessage,
-    HumanMessage,
-    SystemMessage,
-)
-from langchain.tools.convert_to_openai import format_tool_to_openai_function
-from callback_handler import MyHandler
 
 
 if "messages" not in st.session_state:
@@ -45,7 +42,6 @@ if "ai_message_function_arguments" not in st.session_state:
     st.session_state.ai_message_function_arguments = ""
 
 
-
 @st.cache_data
 def load_conversation_history(project_name, test_case):
     try:
@@ -62,14 +58,15 @@ def load_conversation_history(project_name, test_case):
 def get_llm(project_name, test_case):
 
     async_browser = st.session_state.browser
-    toolkit = PlayWrightBrowserToolkit.from_browser(async_browser=async_browser)
+    toolkit = PlayWrightBrowserToolkit.from_browser(
+        async_browser=async_browser)
     tools = toolkit.get_tools()
     llm = ChatOpenAI(
         model="gpt-3.5-turbo",
-        streaming=True,
+        streaming=False,
         temperature=0,
         verbose=True,
-        callbacks=[MyHandler(st.container(), project_name, test_case)]
+        callbacks=[LoggingHandler(project_name, test_case)]
     )
     return llm, tools
 
@@ -112,17 +109,20 @@ async def on_submit(name_to_tool_map):
         {
             "role": "assistant",
             "content": st.session_state.ai_message_content,
-            "function_call": {
-                "name": st.session_state.ai_message_function_name,
-                "arguments": st.session_state.ai_message_function_arguments,
+            "additional_kwargs": {
+                "function_call": {
+                    "name": st.session_state.ai_message_function_name,
+                    "arguments": st.session_state.ai_message_function_arguments,
+                }
             }
             if st.session_state.ai_message_function_name
-            else None,
+            else {},
         }
     )
     if st.session_state.ai_message_function_name:
         tool = name_to_tool_map[st.session_state.ai_message_function_name]
-        function_arguments = json.loads(st.session_state.ai_message_function_arguments)
+        function_arguments = json.loads(
+            st.session_state.ai_message_function_arguments)
         function_response = await tool._arun(
             **function_arguments,
         )
@@ -167,6 +167,8 @@ async def main():
     project_name = st.text_input("Project name")
     test_case = st.text_input("Test case name")
     if not (project_name and test_case):
+        st.cache_resource.clear()  # reset cache
+        st.cache_data.clear()
         st.stop()
 
     # Load conversation file
@@ -190,6 +192,7 @@ async def main():
                 st.subheader(message["name"])
                 st.write(message["content"])
         elif message["role"] == "assistant":
+            print(message)
             prompt_messages.append(AIMessage(**message))
             with st.chat_message("system"):
                 st.write(message["content"])
@@ -223,7 +226,8 @@ async def main():
                 label_visibility="collapsed",
             )
             if user_message_content:
-                prompt_messages.append(HumanMessage(content=user_message_content))
+                prompt_messages.append(HumanMessage(
+                    content=user_message_content))
             else:
                 st.stop()
 
@@ -250,7 +254,6 @@ async def main():
     response = llm(
         prompt_messages,
         functions=functions,
-        # callbacks=[MyHandler(st.container(), project_name, test_case)]
     )
 
     st.session_state.ai_message_content = response.content
