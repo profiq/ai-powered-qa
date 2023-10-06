@@ -192,7 +192,6 @@ async def main():
                 st.subheader(message["name"])
                 st.write(message["content"])
         elif message["role"] == "assistant":
-            print(message)
             prompt_messages.append(AIMessage(**message))
             with st.chat_message("system"):
                 st.write(message["content"])

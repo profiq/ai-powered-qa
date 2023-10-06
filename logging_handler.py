@@ -6,6 +6,8 @@ from langchain.schema.messages import BaseMessage
 import os
 import pickle
 
+from langchain.schema.output import LLMResult
+
 
 class LoggingHandler(BaseCallbackHandler):
 
@@ -36,7 +38,7 @@ class LoggingHandler(BaseCallbackHandler):
                        "parent_run_id": parent_run_id, "tags": tags, "metadata": metadata, "kwargs": kwargs}
             pickle.dump(request, f)
 
-    def on_llm_end(self, response, run_id, parent_run_id, tags, **kwargs) -> None:
+    def on_llm_end(self, response: LLMResult, *, run_id: UUID, parent_run_id: UUID | None = None, **kwargs: Any) -> Any:
         llm_response = {"LLMResult": response, "kwargs": kwargs}
         with open(f"{self.path_to_logs}/request_response_{self.counter}", "ab") as f:
             pickle.dump(llm_response, f)
