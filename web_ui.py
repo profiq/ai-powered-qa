@@ -1,4 +1,6 @@
 import asyncio
+import datetime
+import os
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
@@ -136,6 +138,18 @@ def run_on_submit(name_to_tool_map):
     return st.session_state.loop.run_until_complete(on_submit(name_to_tool_map))
 
 
+def save_conversation_history(project_name: str, test_case: str):
+    path = f"conversation_history/{project_name}/{test_case}"
+    start_time = datetime.datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
+    file_path = os.path.join(path, f"{test_case}_history_{start_time}.json")
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    with open(file_path, 'w') as f:
+        f.write(json.dumps(st.session_state.messages, indent=4))
+
+
 async def main():
     # Initialize browser
     if st.session_state.browser is None:
@@ -188,6 +202,12 @@ async def main():
 
     # User message
     if last_message == None or last_message["role"] == "assistant":
+        with st.form("user_message"):
+            st.form_submit_button(
+                "Save conversation history",
+                on_click=save_conversation_history,
+                args=(project_name, test_case),
+            )
         with st.chat_message("user"):
             user_message_content = st.text_area(
                 "User message content",
