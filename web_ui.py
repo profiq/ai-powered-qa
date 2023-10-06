@@ -243,11 +243,6 @@ async def main():
 
     llm, tools = get_llm(project_name, test_case)
 
-    # write prompt messages to a file, indicating what is the current context
-    with open("prompt_messages.log", "a") as f:
-        print(f"{'-' * 30}\nCurrent context window\n", file=f)
-        print(prompt_messages, file=f)
-
     functions = [format_tool_to_openai_function(t) for t in tools]
     name_to_tool_map = {tool.name: tool for tool in tools}
     response = llm(
