@@ -19,11 +19,12 @@ class MyHandler(BaseCallbackHandler):
         self.status = None
 
         parent_folder = "callback_logs"
-        if not os.path.exists(parent_folder):
-            os.mkdir(parent_folder)
         child_folder = f"{project}_{test_scenario}"
-        if not os.path.exists(child_folder):
-            os.mkdir(child_folder)
+        if os.path.exists(f"{parent_folder}/{child_folder}"):
+            time=datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+            child_folder += f"_{time}"
+            print("the log location is ", child_folder)
+
         self.path_to_logs = f"{parent_folder}/{child_folder}"
         os.mkdir(f"{self.path_to_logs}")
         self.counter = 0
@@ -41,4 +42,5 @@ class MyHandler(BaseCallbackHandler):
         with open(f"{self.path_to_logs}/request_response_{self.counter}", "a") as f:
             request = {"serialized": serialized, "messages": messages, "run_id": run_id, "parent_run_id": parent_run_id, "tags": tags, "metadata": metadata, "kwargs": kwargs}
             pprint.pprint(request, indent=1, width=80, stream=f)
+            pprint.pprint(f"{'*' * 25}", stream=f)
 
