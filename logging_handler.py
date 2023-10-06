@@ -14,6 +14,7 @@ class LoggingHandler(BaseCallbackHandler):
     def __init__(self, project, test_scenario) -> None:
         parent_folder = "api_call_logs"
         child_folder = f"{project}_{test_scenario}"
+        self.log_file_name = "request_response_"
         if not os.path.exists(parent_folder):
             os.mkdir(parent_folder)
         if os.path.exists(f"{parent_folder}/{child_folder}"):
@@ -33,13 +34,13 @@ class LoggingHandler(BaseCallbackHandler):
                             tags: List[str] | None = None,
                             metadata: Dict[str, Any] | None = None,
                             **kwargs: Any) -> Any:
-        with open(f"{self.path_to_logs}/request_response_{self.counter}", "ab") as f:
+        with open(f"{self.path_to_logs}/{self.log_file_name}{self.counter}", "ab") as f:
             request = {"serialized": serialized, "messages": messages, "run_id": run_id,
                        "parent_run_id": parent_run_id, "tags": tags, "metadata": metadata, "kwargs": kwargs}
             pickle.dump(request, f)
 
     def on_llm_end(self, response: LLMResult, *, run_id: UUID, parent_run_id: UUID | None = None, **kwargs: Any) -> Any:
         llm_response = {"LLMResult": response, "kwargs": kwargs}
-        with open(f"{self.path_to_logs}/request_response_{self.counter}", "ab") as f:
+        with open(f"{self.path_to_logs}/{self.log_file_name}{self.counter}", "ab") as f:
             pickle.dump(llm_response, f)
         self.counter += 1
