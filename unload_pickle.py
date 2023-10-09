@@ -23,8 +23,6 @@ def main():
                 pprint.pprint(data, width=80, stream=log_file)
                 pprint.pprint(f"{'*' * 25}", stream=log_file)
 
-    return request_response_data
-
 
 if __name__ == "__main__":
     main()
