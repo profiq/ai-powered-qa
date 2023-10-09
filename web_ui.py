@@ -65,7 +65,6 @@ def get_llm(project_name, test_case):
         model="gpt-3.5-turbo",
         streaming=False,
         temperature=0,
-        verbose=True,
         callbacks=[LoggingHandler(project_name, test_case)]
     )
     return llm, tools
