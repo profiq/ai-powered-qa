@@ -2,87 +2,169 @@ import argparse
 import json
 
 
-# File handling
+class LangHandler:
+    def __init__(self, file_path, language):
+        self.file_path = file_path
+        self.language = language
+
+        self.tools = {
+            "navigate_browser": self.navigate_browser,
+            "click_element": self.click_element,
+            "click_by_text": self.click_by_text,
+            "expect_test_id": self.expect_test_id,
+            "expect_text": self.expect_text,
+            "fill_element": self.fill_element
+        }
+
+    # File handling
+    def write_to_file(self, command: str, overwrite: bool = False) -> None:
+        with open(self.file_path, 'w' if overwrite else 'a') as f:
+            f.write(command)
+
+    def write_test_code(self, command: str) -> None:
+        self.write_to_file(command=f"    {command}")
+
+    def write_test_header(self) -> None:
+        pass
+
+    def write_test_footer(self) -> None:
+        pass
+
+    # Tools
+    def navigate_browser(self, arguments: dict) -> None:
+        pass
+
+    def click_element(self, arguments: dict) -> None:
+        pass
+
+    def click_by_text(self, arguments: dict) -> None:
+        pass
+
+    def expect_test_id(self, arguments: dict) -> None:
+        pass
+
+    def expect_text(self, arguments: dict) -> None:
+        pass
+
+    def fill_element(self, arguments: dict) -> None:
+        pass
+
+
+class PlaywrightHandler(LangHandler):
+    def __init__(self, file_path, language):
+        super().__init__(file_path, language)
+        self.file_path = file_path.replace(".json", ".ts")
+
+    # File handling
+    def write_test_header(self) -> None:
+        command = (f"import {{ test, expect }} from '@playwright/test';\n\n"
+                   f"  test('Generated test', async ({{ page }}) => {{\n")
+        self.write_to_file(command=command, overwrite=True)
+
+    def write_test_footer(self) -> None:
+        self.write_to_file(command="});\n\n")
+
+    # Tools
+    def navigate_browser(self, arguments: dict) -> None:
+        address = arguments["url"]
+
+        playwright_cmd = f"await page.goto('{address}');\n"
+        self.write_test_code(command=playwright_cmd)
+
+    def click_element(self, arguments: dict) -> None:
+        selector = arguments["selector"]
+        index = f" >> nth={arguments['index']}" if arguments.get("index") is not None else ""
+
+        playwright_cmd = f"await page.click(\"{selector}{index}\");\n"
+        self.write_test_code(command=playwright_cmd)
+
+    def click_by_text(self, arguments: dict) -> None:
+        text = arguments["text"]
+        index = f".nth({arguments['index']})" if arguments.get("index") is not None else ""
+
+        playwright_cmd = f"await page.getByText('{text}'){index}.click();\n"
+        self.write_test_code(command=playwright_cmd)
+
+    def expect_test_id(self, arguments: dict) -> None:
+        test_id = arguments["test_id"]
+
+        playwright_cmd = f"await expect(page.getByTestId(/{test_id}/)).toBeVisible();\n"
+        self.write_test_code(command=playwright_cmd)
+
+    def expect_text(self, arguments: dict) -> None:
+        text = arguments["text"]
+        index = f".nth({arguments['index']})" if arguments.get("index") is not None else ""
+
+        playwright_cmd = f"await expect(page.getByText(/{text}/){index}).toHaveText(/{text}/);\n"
+        self.write_test_code(command=playwright_cmd)
+
+    def fill_element(self, arguments: dict) -> None:
+        selector = arguments["selector"]
+        text = arguments["text"]
+
+        playwright_cmd = f"await page.locator(\"{selector}\").fill('{text}');\n"
+        self.write_test_code(command=playwright_cmd)
+
+
+class CypressHandler(LangHandler):
+    def __init__(self, file_path, language):
+        super().__init__(file_path, language)
+        self.file_path = file_path.replace(".json", ".cy.js")
+
+    # File handling
+    def write_test_header(self) -> None:
+        command = (f"describe('Generated test', () => {{\n  "
+                   f"it('test scenario', () => {{\n")
+        self.write_to_file(command=command, overwrite=True)
+
+    def write_test_footer(self) -> None:
+        self.write_to_file(command="  })\n})")
+
+    # Tools
+    def navigate_browser(self, arguments: dict) -> None:
+        address = arguments["url"]
+
+        command = f"cy.visit('{address}');\n"
+        self.write_test_code(command=command)
+
+    def click_element(self, arguments: dict) -> None:
+        selector = arguments["selector"]
+        index = f"eq({arguments['index']})" if arguments.get("index") is not None else ""
+
+        command = f"cy.get('{selector}'){index}.click();\n"
+        self.write_test_code(command=command)
+
+    def click_by_text(self, arguments: dict) -> None:
+        text = arguments["text"]
+        index = f".eq({arguments['index']})" if arguments.get("index") is not None else ""
+
+        command = f"cy.contains('{text}'){index}.click();\n"
+        self.write_test_code(command=command)
+
+    def expect_test_id(self, arguments: dict) -> None:
+        test_id = arguments["test_id"]
+
+        command = f"cy.get('[data-testid=/{test_id}/]').should('be.visible');\n"
+        self.write_test_code(command=command)
+
+    def expect_text(self, arguments: dict) -> None:
+        text = arguments["text"]
+        index = f".eq({arguments['index']})" if arguments.get("index") is not None else ""
+
+        command = f"cy.contains(/{text}/){index}.should('have.text', '{text}');\n"
+        self.write_test_code(command=command)
+
+    def fill_element(self, arguments: dict) -> None:
+        selector = arguments["selector"]
+        text = arguments["text"]
+
+        command = f"cy.get('{selector}').type('{text}');\n"
+        self.write_test_code(command=command)
+
 
 def load_json_conversation(file_path: str) -> dict:
     with open(file_path, "r") as file:
         return json.load(file)
-
-
-def write_test_header(file_path: str, language: str) -> None:
-    if language == "playwright":
-        with open(file_path, 'w') as f:
-            f.write(f"import {{ test, expect }} from '@playwright/test';\n\n"
-                    f"  test('Generated test', async ({{ page }}) => {{\n")
-
-
-def write_test_code(file_path: str, language: str, code: str) -> None:
-    if language == "playwright":
-        with open(file_path, 'a') as f:
-            f.write(f"    {code}")
-
-
-def write_test_footer(file_path: str, language: str) -> None:
-    if language == "playwright":
-        with open(file_path, 'a') as f:
-            f.write("});\n\n")
-
-
-#   Tools functions
-def navigate_browser(arguments: dict, language: str, file_path: str) -> None:
-    address = arguments["url"]
-
-    playwright_cmd = f"await page.goto('{address}');\n"
-    write_test_code(file_path, language, playwright_cmd)
-
-
-def click_element(arguments: dict, language: str, file_path: str) -> None:
-    selector = arguments["selector"]
-    index = f" >> nth={arguments['index']}" if arguments.get("index") is not None else ""
-
-    playwright_cmd = f"await page.click(\"{selector}{index}\");\n"
-    write_test_code(file_path, language, playwright_cmd)
-
-
-def click_text(arguments: dict, language: str, file_path: str) -> None:
-    text = arguments["text"]
-    index = f".nth({arguments['index']})" if arguments.get("index") is not None else ""
-
-    playwright_cmd = f"await page.getByText('{text}'){index}.click();\n"
-    write_test_code(file_path, language, playwright_cmd)
-
-
-def expect_test_id(arguments: dict, language: str, file_path: str) -> None:
-    test_id = arguments["test_id"]
-
-    playwright_cmd = f"await expect(page.getByTestId(/{test_id}/)).toBeVisible();\n"
-    write_test_code(file_path, language, playwright_cmd)
-
-
-def expect_text(arguments: dict, language: str, file_path: str) -> None:
-    text = arguments["text"]
-    index = arguments["index"] if arguments.get("index") is not None else ""
-
-    playwright_cmd = f"await expect(page.getByText(/{text}/).nth({index})).toHaveText(/{text}/);\n"
-    write_test_code(file_path, language, playwright_cmd)
-
-
-def fill_element(arguments: dict, language: str, file_path: str) -> None:
-    selector = arguments["selector"]
-    text = arguments["text"]
-
-    playwright_cmd = f"await page.locator(\"{selector}\").fill('{text}');\n"
-    write_test_code(file_path, language, playwright_cmd)
-
-
-tools = {
-    "navigate_browser": navigate_browser,
-    "click_element": click_element,
-    "click_by_text": click_text,
-    "expect_test_id": expect_test_id,
-    "expect_text": expect_text,
-    "fill_element": fill_element
-}
 
 
 if __name__ == "__main__":
@@ -96,17 +178,18 @@ if __name__ == "__main__":
     conversation_file = args.file_path
     lang = args.language
 
-    generated_code_file = conversation_file.replace(".json", ".ts")
+    languages = {"playwright": PlaywrightHandler, "cypress": CypressHandler}
+    messages = load_json_conversation(file_path=conversation_file)
 
-    messages = load_json_conversation(conversation_file)
-    write_test_header(file_path=generated_code_file, language=lang)
+    handler = languages[lang](file_path=conversation_file, language=lang)  # e.g. handler = CypressHandler()
+    handler.write_test_header()
 
-    for msg in messages:
+    for message in messages:
         try:
-            tool = tools[msg["additional_kwargs"]["function_call"]["name"]]
-            tool(json.loads(msg["additional_kwargs"]["function_call"]["arguments"]), args.language, generated_code_file)
+            tool = handler.tools[message["additional_kwargs"]["function_call"]["name"]]
+            tool(arguments=json.loads(message["additional_kwargs"]["function_call"]["arguments"]))
         except KeyError:
             pass
 
-    write_test_footer(file_path=generated_code_file, language=lang)
-    print(f"Code generated into: {generated_code_file}")
+    handler.write_test_footer()
+    print(f"Code generated into: {handler.file_path}")
