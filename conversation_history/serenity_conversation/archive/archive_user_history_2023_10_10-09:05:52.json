@@ -324,7 +324,7 @@
         "additional_kwargs": {
             "function_call": {
                 "name": "click_by_text",
-                "arguments": "{\n  \"selector\": \"button\",\n  \"text\": \""
+                "arguments": "{\n  \"selector\": \"button\",\n  \"text\": \"Confirm\"\n}"
             }
         }
     },

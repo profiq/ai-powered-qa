@@ -24,6 +24,7 @@ class LangHandler:
     def write_test_code(self, command: str) -> None:
         self.write_to_file(command=f"    {command}")
 
+    # Following functions must be implemented in the descendant class for proper behavior!
     def write_test_header(self) -> None:
         pass
 
