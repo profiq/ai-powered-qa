@@ -60,7 +60,7 @@ def get_llm(project_name, test_case):
     toolkit = PlayWrightBrowserToolkit.from_browser(async_browser=async_browser)
     tools = toolkit.get_tools()
     llm = ChatOpenAI(
-        model="gpt-4",
+        model="gpt-3.5",
         streaming=False,
         temperature=0,
         callbacks=[LoggingHandler(project_name, test_case)],
