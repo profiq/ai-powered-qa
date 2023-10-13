@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 import asyncio
 import datetime
 import os
+from constants import llm_models, function_call_defaults
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
@@ -55,19 +56,29 @@ def load_conversation_history(project_name, test_case):
 
 
 @st.cache_resource
-def get_llm(project_name, test_case):
-
+def get_tools():
     async_browser = st.session_state.browser
     toolkit = PlayWrightBrowserToolkit.from_browser(
         async_browser=async_browser)
     tools = toolkit.get_tools()
+    return tools
+
+
+@st.cache_resource
+def get_llm(gpt_model, project_name, test_case):
+
     llm = ChatOpenAI(
-        model="gpt-3.5-turbo",
+        model=gpt_model,
         streaming=False,
         temperature=0,
-        callbacks=[LoggingHandler(project_name, test_case)]
+        callbacks=[setup_logging_handler(project_name, test_case)]
     )
-    return llm, tools
+    return llm
+
+
+@st.cache_resource
+def setup_logging_handler(project_name, test_case):
+    return LoggingHandler(project_name, test_case)
 
 
 async def get_context_message(browser):
@@ -139,6 +150,9 @@ async def on_submit(name_to_tool_map):
 
 
 def run_on_submit(name_to_tool_map):
+    # reset the options, unpredicateable behaviour otherwise
+    st.session_state.function_call_option = function_call_defaults[0]
+    st.session_state.gpt_model = llm_models[0]
     asyncio.set_event_loop(st.session_state.loop)
     return st.session_state.loop.run_until_complete(on_submit(name_to_tool_map))
 
@@ -153,6 +167,14 @@ def save_conversation_history(project_name: str, test_case: str):
 
     with open(file_path, 'w') as f:
         f.write(json.dumps(st.session_state.messages, indent=4))
+
+
+@st.cache_data
+def get_function_call_options(functions):
+    options = function_call_defaults
+    options.extend([func["name"] for func in functions])
+
+    return options
 
 
 async def main():
@@ -229,8 +251,6 @@ async def main():
             else:
                 st.stop()
 
-    # TODO: Force function call
-
     # Context message
 
     context_message = await get_context_message(async_browser)
@@ -238,15 +258,35 @@ async def main():
         st.write(context_message.content)
     prompt_messages.append(context_message)
 
-    # Call LLM
-
-    llm, tools = get_llm(project_name, test_case)
-
+    tools = get_tools()
     functions = [format_tool_to_openai_function(t) for t in tools]
     name_to_tool_map = {tool.name: tool for tool in tools}
+
+    # Call LLM
+
+    col1, col2 = st.columns(2)
+    with col1:
+        function_call_option = st.selectbox(
+            "Force function call?", get_function_call_options(functions), help="'auto' leaves the decision to the model,"
+            " 'none' forces a generated message, or choose a specific function.", index=0, key="function_call_option")
+    with col2:
+        gpt_model = st.selectbox(
+            "Change model?", llm_models, help="Change the llm. Be aware that gpt-4 is more expensive.",
+            index=0, key="gpt_model")
+
+    if function_call_option not in ["auto", "none"]:
+        _function_call = {"name": function_call_option}
+    else:
+        _function_call = function_call_option
+
+    st.write("Response is generated with model ", gpt_model,
+             " and function call option ", _function_call, ".")
+    llm = get_llm(gpt_model, project_name, test_case)
+
     response = llm(
         prompt_messages,
         functions=functions,
+        function_call=_function_call,
     )
 
     st.session_state.ai_message_content = response.content
