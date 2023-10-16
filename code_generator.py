@@ -1,11 +1,13 @@
 import argparse
 import json
+from pathlib import Path
 
 
 class LangHandler:
     def __init__(self, file_path, language):
         self.file_path = file_path
         self.language = language
+        self.file_name = Path(self.file_path).stem.split('_history')[0]
 
         self.tools = {
             "navigate_browser": self.navigate_browser,
@@ -59,7 +61,7 @@ class PlaywrightHandler(LangHandler):
     # File handling
     def write_test_header(self) -> None:
         command = (f"import {{ test, expect }} from '@playwright/test';\n\n"
-                   f"  test('Generated test', async ({{ page }}) => {{\n")
+                   f"  test('{self.file_name}', async ({{ page }}) => {{\n")
         self.write_to_file(command=command, overwrite=True)
 
     def write_test_footer(self) -> None:
@@ -114,7 +116,7 @@ class CypressHandler(LangHandler):
 
     # File handling
     def write_test_header(self) -> None:
-        command = (f"describe('Generated test', () => {{\n  "
+        command = (f"describe(f'{self.file_name}', () => {{\n  "
                    f"it('test scenario', () => {{\n")
         self.write_to_file(command=command, overwrite=True)
 
@@ -185,10 +187,12 @@ if __name__ == "__main__":
     handler = languages[lang](file_path=conversation_file, language=lang)  # e.g. handler = CypressHandler()
     handler.write_test_header()
 
-    for message in messages:
+    for index, message in enumerate(messages):
         try:
-            tool = handler.tools[message["additional_kwargs"]["function_call"]["name"]]
-            tool(arguments=json.loads(message["additional_kwargs"]["function_call"]["arguments"]))
+            if index+1 != len(messages):
+                if messages[index+1]["role"] == "function" and "Unable" not in messages[index+1]["content"]:
+                    tool = handler.tools[message["additional_kwargs"]["function_call"]["name"]]
+                    tool(arguments=json.loads(message["additional_kwargs"]["function_call"]["arguments"]))
         except KeyError:
             pass
 
