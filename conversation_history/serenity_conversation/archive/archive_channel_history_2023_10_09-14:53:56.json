@@ -94,7 +94,7 @@
     {
         "role": "function",
         "name": "expect_test_id",
-        "content": "Cannot find 'SignInPage-submit' with exception: Locator expected to be visible\nActual value: None \nCall log:\nLocatorAssertions.to_be_visible with timeout 5000ms\nwaiting for get_by_test_id(\"SignInPage-submit\")"
+        "content": "Unable find 'SignInPage-submit' with exception: Locator expected to be visible\nActual value: None \nCall log:\nLocatorAssertions.to_be_visible with timeout 5000ms\nwaiting for get_by_test_id(\"SignInPage-submit\")"
     },
     {
         "role": "assistant",
