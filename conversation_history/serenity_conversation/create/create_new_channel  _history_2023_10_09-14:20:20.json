@@ -94,7 +94,7 @@
     {
         "role": "function",
         "name": "expect_test_id",
-        "content": "Cannot find 'ChatPage' with exception: Locator expected to be visible\nActual value: None \nCall log:\nLocatorAssertions.to_be_visible with timeout 5000ms\nwaiting for get_by_test_id(\"ChatPage\")"
+        "content": "Unable find 'ChatPage' with exception: Locator expected to be visible\nActual value: None \nCall log:\nLocatorAssertions.to_be_visible with timeout 5000ms\nwaiting for get_by_test_id(\"ChatPage\")"
     },
     {
         "role": "assistant",
@@ -298,7 +298,7 @@
     {
         "role": "function",
         "name": "expect_test_id",
-        "content": "Cannot find 'ChannelCreateDrawer-ChannelCreateEditForm-name' with exception: Locator expected to be visible\nActual value: None \nCall log:\nLocatorAssertions.to_be_visible with timeout 5000ms\nwaiting for get_by_test_id(\"ChannelCreateDrawer-ChannelCreateEditForm-name\")"
+        "content": "Unable find 'ChannelCreateDrawer-ChannelCreateEditForm-name' with exception: Locator expected to be visible\nActual value: None \nCall log:\nLocatorAssertions.to_be_visible with timeout 5000ms\nwaiting for get_by_test_id(\"ChannelCreateDrawer-ChannelCreateEditForm-name\")"
     },
     {
         "role": "assistant",
@@ -352,7 +352,7 @@
     {
         "role": "function",
         "name": "expect_text",
-        "content": "Cannot to find 'Test_Channel' with exception: Locator expected to have text 'Test_Channel'\nActual value: None \nCall log:\nLocatorAssertions.to_have_text with timeout 5000ms\nwaiting for get_by_text(\"Test_Channel\").first"
+        "content": "Unable to find 'Test_Channel' with exception: Locator expected to have text 'Test_Channel'\nActual value: None \nCall log:\nLocatorAssertions.to_have_text with timeout 5000ms\nwaiting for get_by_text(\"Test_Channel\").first"
     },
     {
         "role": "assistant",
@@ -406,7 +406,7 @@
     {
         "role": "function",
         "name": "expect_text",
-        "content": "Cannot to find 'Test_Channel' with exception: Locator expected to have text 'Test_Channel'\nActual value: None \nCall log:\nLocatorAssertions.to_have_text with timeout 5000ms\nwaiting for get_by_text(\"Test_Channel\").first"
+        "content": "Unable to find 'Test_Channel' with exception: Locator expected to have text 'Test_Channel'\nActual value: None \nCall log:\nLocatorAssertions.to_have_text with timeout 5000ms\nwaiting for get_by_text(\"Test_Channel\").first"
     },
     {
         "role": "assistant",
@@ -460,7 +460,7 @@
     {
         "role": "function",
         "name": "expect_text",
-        "content": "Cannot to find 'Conversation successfully added.' with exception: Locator expected to have text 'Conversation successfully added.'\nActual value: None \nCall log:\nLocatorAssertions.to_have_text with timeout 5000ms\nwaiting for get_by_text(\"Conversation successfully added.\").first"
+        "content": "Unable to find 'Conversation successfully added.' with exception: Locator expected to have text 'Conversation successfully added.'\nActual value: None \nCall log:\nLocatorAssertions.to_have_text with timeout 5000ms\nwaiting for get_by_text(\"Conversation successfully added.\").first"
     },
     {
         "role": "assistant",
@@ -475,7 +475,7 @@
     {
         "role": "function",
         "name": "expect_test_id",
-        "content": "Cannot find 'Test_Channel' with exception: Locator expected to be visible\nActual value: None \nCall log:\nLocatorAssertions.to_be_visible with timeout 5000ms\nwaiting for get_by_test_id(\"Test_Channel\")"
+        "content": "Unable find 'Test_Channel' with exception: Locator expected to be visible\nActual value: None \nCall log:\nLocatorAssertions.to_be_visible with timeout 5000ms\nwaiting for get_by_test_id(\"Test_Channel\")"
     },
     {
         "role": "assistant",
