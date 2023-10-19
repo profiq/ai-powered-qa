@@ -36,6 +36,9 @@ class LoggingHandler(BaseCallbackHandler):
                             tags: List[str] | None = None,
                             metadata: Dict[str, Any] | None = None,
                             **kwargs: Any) -> Any:
+        if os.path.exists(f"{self.path_to_logs}/{self.log_file_name}{self.counter}"):
+            # on_llm_end is not called if the models response is error
+            self.counter += 1
         with open(f"{self.path_to_logs}/{self.log_file_name}{self.counter}", "ab") as f:
             request = {"serialized": serialized, "messages": messages, "run_id": run_id,
                        "parent_run_id": parent_run_id, "tags": tags, "metadata": metadata, "kwargs": kwargs}
