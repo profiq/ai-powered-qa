@@ -16,6 +16,8 @@ from components.constants import llm_models, function_call_defaults
 from components.function_caller import get_browser, get_tools, call_function
 from components.logging_handler import LoggingHandler
 
+from constants import llm_models, function_call_defaults
+from chat_model import ProfiqDevAIConfig, ChatCompletionInputs, ProfiqDevAI
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -48,21 +50,6 @@ def load_conversation_history(project_name, test_case):
 
 
 @st.cache_resource
-def get_llm(gpt_model, project_name, test_case):
-    llm = ChatOpenAI(
-        model=gpt_model,
-        streaming=False,
-        temperature=0,
-        callbacks=[setup_logging_handler(project_name, test_case)],
-    )
-    return llm
-
-
-@st.cache_resource
-def setup_logging_handler(project_name, test_case):
-    return LoggingHandler(project_name, test_case)
-
-
 async def on_submit(response):
     if st.session_state.user_message_content:
         st.session_state.messages.append(
@@ -129,6 +116,16 @@ def get_function_call_options(functions):
     return options
 
 
+@st.cache_resource
+def setup_llm(project_name, test_case):
+    return ProfiqDevAI(
+        config=ProfiqDevAIConfig(
+            project_name="",
+            test_case="",
+            x_last_messages=10,
+        ))
+
+
 async def main():
     # Initialize browser
     if st.session_state.browser is None:
@@ -144,22 +141,27 @@ async def main():
         st.stop()
 
     # Load conversation file
-    load_conversation_history(project_name, test_case)
+    # load_conversation_history(project_name, test_case)
 
     # System message
     with st.chat_message("system"):
         system_message = st.text_area(
             label="System message",
             value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the user.",
+            "System message",
+            "You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the "
+            "user.\nFollow these steps when answering the user.\n Step 1. Consider you have all information necessary, "
+            "if not, ask the user. In the system messages you have a simplified html of the webpage. Please, "
+            "look for relevant information (like text elemets, ids, errors, warnings, messages) and use this information to propose next steps.\n"
+            "Step 2. Consider if the proposed step makes sense and think about next steps.\n "
+            "Step 3. Propose the next step to the user.\n",
             key="system_message",
             label_visibility="collapsed",
         )
 
-    # History for prompt
-    prompt_messages = [SystemMessage(content=system_message)]
-    for message in st.session_state.messages[-10:]:
+    # Write conversation history
+    for message in st.session_state.messages:
         if message["role"] == "function":
-            prompt_messages.append(FunctionMessage(**message))
             with st.chat_message("function"):
                 st.write(f"**{message['name']}**")
                 st.write(message["content"])
@@ -202,7 +204,7 @@ async def main():
                 label_visibility="collapsed",
             )
             if user_message_content:
-                prompt_messages.append(HumanMessage(content=user_message_content))
+                st.session_state.user_message_content = user_message_content
             else:
                 st.stop()
 
@@ -211,13 +213,12 @@ async def main():
     context_message = await components.context_message.get_context_message(async_browser)
     with st.chat_message("system"):
         context_message.content = st.text_area(label="Context message", value=context_message.content)
-    prompt_messages.append(context_message)
+        st.write(context_message)
 
     tools = await get_tools(browser=st.session_state.browser)
     functions = [format_tool_to_openai_function(t) for t in tools]
 
-    # Call LLM
-
+    # Get chatcompletion inputs
     col1, col2 = st.columns(2)
     with col1:
         function_call_option = st.selectbox(
@@ -237,19 +238,21 @@ async def main():
             key="gpt_model",
         )
 
-    if function_call_option not in ["auto", "none"]:
-        _function_call = {"name": function_call_option}
-    else:
-        _function_call = function_call_option
-
     st.write(
         "Response is generated with model ",
         gpt_model,
         " and function call option ",
-        _function_call,
+        function_call_option,
         ".",
     )
-    llm = get_llm(gpt_model, project_name, test_case)
+    llm = setup_llm(project_name, test_case)
+    # Call LLM
+    # TODO functions dont work
+    response = llm.chat_completion(ChatCompletionInputs(
+        gpt_model=gpt_model, conversation_history=json.dumps(st.session_state.messages), functions=functions,
+        function_call=function_call_option, system_messages=json.dumps([
+                                                                       system_message]),
+        context_messages=json.dumps([context_message])))
 
     def get_response(messages: list):
         try:
