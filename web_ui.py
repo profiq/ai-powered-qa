@@ -58,20 +58,18 @@ def load_conversation_history(project_name, test_case):
 @st.cache_resource
 def get_tools():
     async_browser = st.session_state.browser
-    toolkit = PlayWrightBrowserToolkit.from_browser(
-        async_browser=async_browser)
+    toolkit = PlayWrightBrowserToolkit.from_browser(async_browser=async_browser)
     tools = toolkit.get_tools()
     return tools
 
 
 @st.cache_resource
 def get_llm(gpt_model, project_name, test_case):
-
     llm = ChatOpenAI(
         model=gpt_model,
         streaming=False,
         temperature=0,
-        callbacks=[setup_logging_handler(project_name, test_case)]
+        callbacks=[setup_logging_handler(project_name, test_case)],
     )
     return llm
 
@@ -131,8 +129,7 @@ async def on_submit(name_to_tool_map):
     )
     if st.session_state.ai_message_function_name:
         tool = name_to_tool_map[st.session_state.ai_message_function_name]
-        function_arguments = json.loads(
-            st.session_state.ai_message_function_arguments)
+        function_arguments = json.loads(st.session_state.ai_message_function_arguments)
         function_response = await tool._arun(
             **function_arguments,
         )
@@ -165,7 +162,7 @@ def save_conversation_history(project_name: str, test_case: str):
     if not os.path.exists(path):
         os.makedirs(path)
 
-    with open(file_path, 'w') as f:
+    with open(file_path, "w") as f:
         f.write(json.dumps(st.session_state.messages, indent=4))
 
 
@@ -178,7 +175,6 @@ def get_function_call_options(functions):
 
 
 async def main():
-
     # Initialize browser
     if st.session_state.browser is None:
         st.session_state.browser = await get_browser()
@@ -210,13 +206,16 @@ async def main():
         if message["role"] == "function":
             prompt_messages.append(FunctionMessage(**message))
             with st.chat_message("function"):
-                st.subheader(message["name"])
+                st.write(f"**{message['name']}**")
                 st.write(message["content"])
         elif message["role"] == "assistant":
             prompt_messages.append(AIMessage(**message))
-            with st.chat_message("system"):
-                st.write(message["content"])
-                function_call = message.get("function_call", None)
+            with st.chat_message("assistant"):
+                if message["content"]:
+                    st.write(message["content"])
+                function_call = message.get("additional_kwargs", {}).get(
+                    "function_call", None
+                )
                 if function_call:
                     with st.status(function_call["name"], state="complete"):
                         st.write(function_call["arguments"])
@@ -232,8 +231,8 @@ async def main():
 
     # User message
     if last_message == None or last_message["role"] == "assistant":
-        with st.form("user_message"):
-            st.form_submit_button(
+        if last_message is not None:
+            st.button(
                 "Save conversation history",
                 on_click=save_conversation_history,
                 args=(project_name, test_case),
@@ -241,13 +240,11 @@ async def main():
         with st.chat_message("user"):
             user_message_content = st.text_area(
                 "User message content",
-                "Let's write a test for a chat app. We should test a user can send a message.",
                 key="user_message_content",
                 label_visibility="collapsed",
             )
             if user_message_content:
-                prompt_messages.append(HumanMessage(
-                    content=user_message_content))
+                prompt_messages.append(HumanMessage(content=user_message_content))
             else:
                 st.stop()
 
@@ -267,20 +264,34 @@ async def main():
     col1, col2 = st.columns(2)
     with col1:
         function_call_option = st.selectbox(
-            "Force function call?", get_function_call_options(functions), help="'auto' leaves the decision to the model,"
-            " 'none' forces a generated message, or choose a specific function.", index=0, key="function_call_option")
+            "Force function call?",
+            get_function_call_options(functions),
+            help="'auto' leaves the decision to the model,"
+            " 'none' forces a generated message, or choose a specific function.",
+            index=0,
+            key="function_call_option",
+        )
     with col2:
         gpt_model = st.selectbox(
-            "Change model?", llm_models, help="Change the llm. Be aware that gpt-4 is more expensive.",
-            index=0, key="gpt_model")
+            "Change model?",
+            llm_models,
+            help="Change the llm. Be aware that gpt-4 is more expensive.",
+            index=0,
+            key="gpt_model",
+        )
 
     if function_call_option not in ["auto", "none"]:
         _function_call = {"name": function_call_option}
     else:
         _function_call = function_call_option
 
-    st.write("Response is generated with model ", gpt_model,
-             " and function call option ", _function_call, ".")
+    st.write(
+        "Response is generated with model ",
+        gpt_model,
+        " and function call option ",
+        _function_call,
+        ".",
+    )
     llm = get_llm(gpt_model, project_name, test_case)
 
     response = llm(
@@ -302,20 +313,17 @@ async def main():
     with st.chat_message("assistant"):
         with st.form("ai_message"):
             st.text_area(
-                "AI message content",
+                "Content",
                 key="ai_message_content",
-                label_visibility="collapsed",
             )
             function_call = response.additional_kwargs.get("function_call", {})
             st.text_input(
-                "AI message function name",
+                "Function call",
                 key="ai_message_function_name",
-                label_visibility="collapsed",
             )
             st.text_area(
-                "AI message function arguments",
+                "Arguments",
                 key="ai_message_function_arguments",
-                label_visibility="collapsed",
             )
             st.form_submit_button(
                 "Commit agent completion",
