@@ -4,7 +4,6 @@ import json
 import os
 
 import streamlit as st
-import tiktoken
 from dotenv import load_dotenv
 from langchain.chat_models import ChatOpenAI
 from langchain.schema.messages import (
@@ -18,6 +17,7 @@ from langchain.tools.playwright.utils import (
     aget_current_page,
 )
 from openai import InvalidRequestError
+from streamlit.errors import DuplicateWidgetID
 
 from langchain_modules.toolkit import PlayWrightBrowserToolkit
 from logging_handler import LoggingHandler
@@ -193,17 +193,21 @@ async def main():
                 st.subheader(message["name"])
                 st.write(message["content"])
         elif message["role"] == "assistant":
-            prompt_messages.append(AIMessage(**message))
             with st.chat_message("system"):
-                st.write(message["content"])
+                if message["content"] != "":
+                    try:
+                        message["content"] = st.text_area(label="Assistant Message", value=message["content"])
+                    except DuplicateWidgetID:
+                        st.write(message["content"])
                 function_call = message.get("function_call", None)
                 if function_call:
                     with st.status(function_call["name"], state="complete"):
-                        st.write(function_call["arguments"])
+                        message["function_call"]["arguments"] = st.text_area(label="function_call", value=function_call["arguments"], label_visibility="collapsed")
+                prompt_messages.append(AIMessage(**message))
         elif message["role"] == "user":
-            prompt_messages.append(HumanMessage(**message))
             with st.chat_message("user"):
-                st.write(message["content"])
+                message["content"] = st.text_area(label="User Message", value=message["content"])
+                prompt_messages.append(HumanMessage(**message))
 
     # Check last message
     last_message = None
@@ -237,7 +241,7 @@ async def main():
 
     context_message = await get_context_message(async_browser)
     with st.chat_message("system"):
-        st.write(context_message.content)
+        context_message.content = st.text_area(label="Context message", value=context_message.content)
     prompt_messages.append(context_message)
 
     # Call LLM
@@ -247,98 +251,20 @@ async def main():
     functions = [format_tool_to_openai_function(t) for t in tools]
     name_to_tool_map = {tool.name: tool for tool in tools}
 
-    def num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613"):
-        """Return the number of tokens used by a list of messages."""
-        try:
-            encoding = tiktoken.encoding_for_model(model)
-        except KeyError:
-            print("Warning: model not found. Using cl100k_base encoding.")
-            encoding = tiktoken.get_encoding("cl100k_base")
-        if model in {
-            "gpt-3.5-turbo-0613",
-            "gpt-3.5-turbo-16k-0613",
-            "gpt-4-0314",
-            "gpt-4-32k-0314",
-            "gpt-4-0613",
-            "gpt-4-32k-0613",
-        }:
-            tokens_per_message = 3
-            tokens_per_name = 1
-        elif model == "gpt-3.5-turbo-0301":
-            tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
-            tokens_per_name = -1  # if there's a name, the role is omitted
-        elif "gpt-3.5-turbo" in model:
-            print("Warning: gpt-3.5-turbo may update over time. Returning num tokens assuming gpt-3.5-turbo-0613.")
-            return num_tokens_from_messages(messages, model="gpt-3.5-turbo-0613")
-        elif "gpt-4" in model:
-            print("Warning: gpt-4 may update over time. Returning num tokens assuming gpt-4-0613.")
-            return num_tokens_from_messages(messages, model="gpt-4-0613")
-        else:
-            raise NotImplementedError(
-                f"""num_tokens_from_messages() is not implemented for model {model}. See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are converted to tokens."""
-            )
-        num_tokens = 0
-        for message in messages:
-            num_tokens += tokens_per_message
-            for key, value in message:
-                num_tokens += len(encoding.encode(str(value)))
-                if key == "name":
-                    num_tokens += tokens_per_name
-
-        num_tokens += 3  # every reply is primed with <|start|>assistant<|message|>
-        return num_tokens
-
-    def get_response(messages: list, recurse: bool = False):
+    def get_response(messages: list):
         try:
             res = llm(messages, functions=functions)
 
-            encoding = tiktoken.encoding_for_model(llm.model_name)
-            # functions_tokens = int(len(encoding.encode(str(functions))) / 2) - 2
             functions_tokens = int(llm.get_num_tokens(str(functions))/2) - 2
             messages_tokens = llm.get_num_tokens_from_messages(messages) - 1
             total_tokens = functions_tokens + messages_tokens
-
-            st.write(f"Messages' tokens: {str(messages_tokens)}   Functions tokens: {str(functions_tokens)}   Total tokens: {str(total_tokens)}")
+            with st.chat_message("system"):
+                st.write(f"Messages tokens: {str(messages_tokens)}\n\nFunctions tokens: {str(functions_tokens)}\n\nTotal tokens: {str(total_tokens)}")
 
             return res
         except InvalidRequestError as e:
             with (st.chat_message("assistant")):
-                if not recurse:
-                    st.write(e._message)
-                    edit_form = st.form("message_edit")
-                    sys_msg = edit_form.text_area(label=f"system, tokens: {llm.get_num_tokens(str(system_message))}", value=system_message, key='system')
-
-                    prompt_messages = [SystemMessage(content=sys_msg)]
-
-                    for key, message in enumerate(st.session_state.messages[-10:]):
-                        message["content"] = edit_form.text_area(label=f"{message['role']}, tokens: {llm.get_num_tokens(str(message))}", value=message['content'], key=key)
-                        if message["role"] == "function":
-                            prompt_messages.append(FunctionMessage(**message))
-                        elif message["role"] == "assistant":
-                            prompt_messages.append(AIMessage(**message))
-                        elif message["role"] == "user":
-                            prompt_messages.append(HumanMessage(**message))
-
-                    last_message = messages[-2]
-                    if last_message not in prompt_messages:
-                        last_message.content = edit_form.text_area(label=f"{last_message.type}, tokens: {llm.get_num_tokens(str(last_message))}",
-                                                         value=last_message.content, key='last')
-                        if last_message.type == "function":
-                            prompt_messages.append(FunctionMessage(**last_message))
-                        elif last_message.type == "assistant":
-                            prompt_messages.append(AIMessage(**last_message))
-                        elif last_message.type == "user":
-                            prompt_messages.append(HumanMessage(**last_message))
-
-                    context_message = messages[-1]
-                    if context_message.type == "system":
-                        messages[-1] = edit_form.text_area(label=f"{context_message.type}, tokens: {llm.get_num_tokens(str(context_message))}", value=context_message.content, key='context')
-                        prompt_messages.append(SystemMessage(content=messages[-1]))
-
-                    submit = edit_form.form_submit_button(label="Save messages")
-
-                    if submit:
-                        return get_response(prompt_messages, recurse=True)
+                st.write(e._message)
 
     try:
         response = get_response(messages=prompt_messages)
