@@ -255,8 +255,8 @@ async def main():
         try:
             res = llm(messages, functions=functions)
 
-            functions_tokens = int(llm.get_num_tokens(str(functions))/2) - 2
-            messages_tokens = llm.get_num_tokens_from_messages(messages) - 1
+            functions_tokens = int(llm.get_num_tokens(str(functions))/2)    # function tokens are counted twice for some reason
+            messages_tokens = llm.get_num_tokens_from_messages(messages)
             total_tokens = functions_tokens + messages_tokens
             with st.chat_message("system"):
                 st.write(f"Messages tokens: {str(messages_tokens)}\n\nFunctions tokens: {str(functions_tokens)}\n\nTotal tokens: {str(total_tokens)}")
