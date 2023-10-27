@@ -66,29 +66,42 @@ def mark_invisible_elements(page):
 
 def clean_attributes(tag):
     # List of attributes to remove, add or remove attributes as needed
-    blocked_attrs = ["class", "style"]
+    blocked_attrs = ["class", "style", "jsaction", "jscontroller", "data-p", "jsrenderer", "c-wiz", "jsmodel", "data-idom-class",
+                     "jsshadow", "jsslot", "dir", "aria-hidden", "aria-haspopup", "aria-expanded", "aria-atomic",
+                     "aria-live", "aria-relevant", "aria-disabled", "aria-labelledby", "aria-describedby",
+                     "aria-controls"]
     tag.attrs = {k: v for k, v in tag.attrs.items() if k not in blocked_attrs}
 
 
-def remove_specific_tags(tag):
+def remove_specific_tags(soup):
     # List of tags to remove
-    tags_to_remove = ["path", "meta", "link", "noscript", "script", "style", "title"]
-    for t in tag.find_all(tags_to_remove):
+    tags_to_remove = ["path", "meta", "link",
+                      "noscript", "script", "style", "title", ]
+    for t in soup.find_all(tags_to_remove):
         t.decompose()
 
 
-def remove_elements_by_data_attribute(tag, attribute, value):
-    for elem in tag.select(f'[{attribute}="{value}"]'):
+def remove_elements_by_data_attribute(soup, attribute, value):
+    for elem in soup.select(f'[{attribute}="{value}"]'):
         elem.decompose()
 
 
-def strip_html_recursively(tag):
-    clean_attributes(tag)
-    for child in tag.find_all(
+def strip_html_recursively(soup):
+    clean_attributes(soup)
+    for child in soup.find_all(
         True, recursive=False
     ):  # `recursive=False` to only go one level deep
         if isinstance(child, Tag):
             strip_html_recursively(child)
+
+
+def remove_nonrelevant_tags(soup):
+    for tag in soup.find_all(lambda tag: not tag.contents and not tag.attrs):
+        tag.decompose()
+    for tag in soup.find_all(
+            lambda tag: len(tag.contents) == 1 and not tag.attrs and not tag.name in ['body', 'br', 'p', 'head', 'html']):
+        # if tag has only one child
+        tag.unwrap()
 
 
 def strip_html_to_structure(html_content):
@@ -96,4 +109,6 @@ def strip_html_to_structure(html_content):
     remove_specific_tags(soup)  # Remove specific tags before processing
     remove_elements_by_data_attribute(soup, "data-visible", "false")
     strip_html_recursively(soup)
+    remove_nonrelevant_tags(soup)
+
     return str(soup)
