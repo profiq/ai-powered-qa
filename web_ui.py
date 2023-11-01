@@ -205,12 +205,12 @@ async def main():
                 st.write(message["content"])
         elif message["role"] == "assistant":
             with st.chat_message("system"):
-                if message["content"] != "":
+                if message["content"]:
                     try:
                         message["content"] = st.text_area(label="Assistant Message", value=message["content"])
                     except DuplicateWidgetID:
                         st.write(message["content"])
-                function_call = message.get("additional_kwargs", {}).get("function_call", None)
+                function_call = message.get("function_call", None)
                 if function_call:
                     with st.status(function_call["name"], state="complete"):
                         message["function_call"]["arguments"] = st.text_area(label="function_call",
@@ -304,10 +304,9 @@ async def main():
                 llm.get_num_tokens(str(functions)) / 2)  # function tokens are counted twice for some reason
             messages_tokens = llm.get_num_tokens_from_messages(messages)
             total_tokens = functions_tokens + messages_tokens
-            with st.chat_message("system"):
-                st.write(f"Messages tokens: {str(messages_tokens)}\n\n"
-                         f"Functions tokens: {str(functions_tokens)}\n\n"
-                         f"Total tokens: {str(total_tokens)}")
+            st.write(f"Messages tokens: {str(messages_tokens)}  \n"
+                     f"Functions tokens: {str(functions_tokens)}  \n"
+                     f"Total tokens: {str(total_tokens)}")
 
             return response
         except InvalidRequestError as e:
