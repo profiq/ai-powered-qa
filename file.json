@@ -1,0 +1,12 @@
+[
+    {
+        "role": "assistant",
+        "content": "",
+        "additional_kwargs": {
+            "function_call": {
+                "name": "navigate_browser",
+                "arguments": "{\n  \"url\": \"https://dev.app.serenityapp.com/sign-in\"\n}"
+            }
+        }
+    }
+]

@@ -136,7 +136,8 @@ class GPT:
                                 function_response = await function_tool._arun(**function_args)
 
                                 gpt_response = await self.ask_gpt(
-                                    self._construct_message(role="function", name=function_name, content=function_response))
+                                    self._construct_message(role="function", name=function_name,
+                                                            content=function_response))
                                 self._write_conversation_history()
 
                             elif user_loop_input == 'quit':
@@ -148,7 +149,7 @@ class GPT:
                             elif user_loop_input == 'p':
                                 # abort function call and enter new prompt with abort message
                                 abort_message = f"I don't want to call function {gpt_response['function_call']['name']} " \
-                                    f"with parameters {gpt_response['function_call']['arguments']}. Instead "
+                                                f"with parameters {gpt_response['function_call']['arguments']}. Instead "
                                 new_prompt = input(
                                     "Function call cancelled. Enter new prompt.\n")
                                 gpt_response = await self.ask_gpt(
@@ -217,24 +218,21 @@ class GPT:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(filename='token_usage.log',
-                        encoding='utf-8', level=logging.INFO)
+    logging.basicConfig(filename='token_usage.log', encoding='utf-8', level=logging.INFO)
 
     open('token_usage.log', 'w').close()
     open('conversation_history.log', 'w').close()
 
-   # Initialize the playwright toolkit / tools
+    # Initialize the playwright toolkit / tools
     async_browser = create_async_playwright_browser(headless=False)
-    toolkit = PlayWrightBrowserToolkit.from_browser(
-        async_browser=async_browser)
+    toolkit = PlayWrightBrowserToolkit.from_browser(async_browser=async_browser)
     tools = toolkit.get_tools()
     # convert tools from langchain to openai functions
     functions = [format_tool_to_openai_function(t) for t in tools]
 
     gpt = GPT(functions=functions)
     loop = asyncio.get_event_loop()
-    test_file = loop.run_until_complete(
-        gpt.user_agent_loop())
+    test_file = loop.run_until_complete(gpt.user_agent_loop())
     print("Generated playwright typescript code: \n")
     with open(test_file, 'r') as f:
         print(f.read())

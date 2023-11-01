@@ -1,15 +1,8 @@
-import asyncio
 import json
 
-from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
 from langchain_modules.toolkit import PlayWrightBrowserToolkit
-
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-
-load_dotenv()
 
 
 async def get_browser():

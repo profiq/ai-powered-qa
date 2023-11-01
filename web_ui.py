@@ -1,3 +1,4 @@
+import auto_fill_to_browser
 from logging_handler import LoggingHandler
 from langchain.tools.convert_to_openai import format_tool_to_openai_function
 from langchain.schema.messages import (
@@ -19,13 +20,12 @@ import asyncio
 import datetime
 import os
 from constants import llm_models, function_call_defaults
+import function_caller
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
-
 load_dotenv()
-
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -43,11 +43,16 @@ if "ai_message_function_arguments" not in st.session_state:
     st.session_state.ai_message_function_arguments = ""
 
 
+def load_json_conversation(file_path) -> dict:
+    with open(file_path, "r") as file:
+        return json.load(file)
+
+
 @st.cache_data
 def load_conversation_history(project_name, test_case):
     try:
         with open(
-            f"projects/{project_name}/{test_case}/conversation_history.json", "r"
+                f"projects/{project_name}/{test_case}/conversation_history.json", "r"
         ) as f:
             st.session_state.messages = json.load(f)
             return st.session_state.messages
@@ -102,6 +107,12 @@ async def get_browser():
 
     browser = await async_playwright().start()
     async_browser = await browser.chromium.launch(headless=False)
+
+    # await auto_fill_to_browser.browse_by_json(playwright_instance=async_browser,
+    #                                           messages=load_json_conversation("projects/serenity/admin_login.json"))
+
+    # await pre_fill("admin_login.json")
+
     return async_browser
 
 
@@ -174,6 +185,22 @@ def get_function_call_options(functions):
     return options
 
 
+async def pre_fill(project: str, file_name: str):
+    try:
+        await auto_fill_to_browser.browse_by_json(playwright_instance=st.session_state.browser,
+                                                  messages=load_json_conversation(f"projects/{project}/{file_name}"))
+    except FileNotFoundError:
+        pass
+
+
+def get_prefill_options(project: str):
+    options = ["None"]
+    try:
+        return options + os.listdir(f"projects/{project}/")
+    except FileNotFoundError:
+        return options
+
+
 async def main():
     # Initialize browser
     if st.session_state.browser is None:
@@ -199,6 +226,25 @@ async def main():
             key="system_message",
             label_visibility="collapsed",
         )
+    global button_clicked
+    button_clicked = False
+
+    def check_button():
+        button_clicked = True
+        print('clicked')
+
+    prefill_box = st.selectbox(
+        label="Project pre-fill options",
+        options=get_prefill_options(project_name))
+
+    st.button(label="Pre-fill admin login",
+              on_click=lambda: check_button())
+
+    if button_clicked:
+        await pre_fill(project_name, prefill_box)
+
+    # await auto_fill_to_browser.browse_by_json(playwright_instance=st.session_state.browser,
+    #                                           messages=load_json_conversation("admin_login.json"))
 
     # History for prompt
     prompt_messages = [SystemMessage(content=system_message)]
@@ -267,7 +313,7 @@ async def main():
             "Force function call?",
             get_function_call_options(functions),
             help="'auto' leaves the decision to the model,"
-            " 'none' forces a generated message, or choose a specific function.",
+                 " 'none' forces a generated message, or choose a specific function.",
             index=0,
             key="function_call_option",
         )
