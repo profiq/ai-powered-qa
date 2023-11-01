@@ -1,31 +1,26 @@
-from logging_handler import LoggingHandler
-from langchain.tools.convert_to_openai import format_tool_to_openai_function
-from langchain.schema.messages import (
-    AIMessage,
-    FunctionMessage,
-    HumanMessage,
-    SystemMessage,
-)
-from langchain.chat_models import ChatOpenAI
-from utils import amark_invisible_elements, strip_html_to_structure
-from langchain.tools.playwright.utils import (
-    aget_current_page,
-)
-from langchain_modules.toolkit import PlayWrightBrowserToolkit
-import streamlit as st
-import json
-from dotenv import load_dotenv
 import asyncio
 import datetime
+import json
 import os
+
+import streamlit as st
+from dotenv import load_dotenv
+from langchain.chat_models import ChatOpenAI
+from langchain.schema.messages import (AIMessage, FunctionMessage, HumanMessage, SystemMessage)
+from langchain.tools.convert_to_openai import format_tool_to_openai_function
+from langchain.tools.playwright.utils import (aget_current_page)
+from openai import InvalidRequestError
+from streamlit.errors import DuplicateWidgetID
+
 from constants import llm_models, function_call_defaults
+from langchain_modules.toolkit import PlayWrightBrowserToolkit
+from logging_handler import LoggingHandler
+from utils import amark_invisible_elements, strip_html_to_structure
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
-
 load_dotenv()
-
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -47,7 +42,7 @@ if "ai_message_function_arguments" not in st.session_state:
 def load_conversation_history(project_name, test_case):
     try:
         with open(
-            f"projects/{project_name}/{test_case}/conversation_history.json", "r"
+                f"projects/{project_name}/{test_case}/conversation_history.json", "r"
         ) as f:
             st.session_state.messages = json.load(f)
             return st.session_state.messages
@@ -194,8 +189,8 @@ async def main():
     # System message
     with st.chat_message("system"):
         system_message = st.text_area(
-            "System message",
-            "You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the user.",
+            label="System message",
+            value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the user.",
             key="system_message",
             label_visibility="collapsed",
         )
@@ -209,20 +204,23 @@ async def main():
                 st.write(f"**{message['name']}**")
                 st.write(message["content"])
         elif message["role"] == "assistant":
-            prompt_messages.append(AIMessage(**message))
-            with st.chat_message("assistant"):
+            with st.chat_message("system"):
                 if message["content"]:
-                    st.write(message["content"])
-                function_call = message.get("additional_kwargs", {}).get(
-                    "function_call", None
-                )
+                    try:
+                        message["content"] = st.text_area(label="Assistant Message", value=message["content"])
+                    except DuplicateWidgetID:
+                        st.write(message["content"])
+                function_call = message.get("function_call", None)
                 if function_call:
                     with st.status(function_call["name"], state="complete"):
-                        st.write(function_call["arguments"])
+                        message["function_call"]["arguments"] = st.text_area(label="function_call",
+                                                                             value=function_call["arguments"],
+                                                                             label_visibility="collapsed")
+                prompt_messages.append(AIMessage(**message))
         elif message["role"] == "user":
-            prompt_messages.append(HumanMessage(**message))
             with st.chat_message("user"):
-                st.write(message["content"])
+                message["content"] = st.text_area(label="User Message", value=message["content"])
+                prompt_messages.append(HumanMessage(**message))
 
     # Check last message
     last_message = None
@@ -230,7 +228,7 @@ async def main():
         last_message = st.session_state.messages[-1]
 
     # User message
-    if last_message == None or last_message["role"] == "assistant":
+    if last_message is None or last_message["role"] == "assistant":
         if last_message is not None:
             st.button(
                 "Save conversation history",
@@ -252,7 +250,7 @@ async def main():
 
     context_message = await get_context_message(async_browser)
     with st.chat_message("system"):
-        st.write(context_message.content)
+        context_message.content = st.text_area(label="Context message", value=context_message.content)
     prompt_messages.append(context_message)
 
     tools = get_tools()
@@ -267,7 +265,7 @@ async def main():
             "Force function call?",
             get_function_call_options(functions),
             help="'auto' leaves the decision to the model,"
-            " 'none' forces a generated message, or choose a specific function.",
+                 " 'none' forces a generated message, or choose a specific function.",
             index=0,
             key="function_call_option",
         )
@@ -294,41 +292,62 @@ async def main():
     )
     llm = get_llm(gpt_model, project_name, test_case)
 
-    response = llm(
-        prompt_messages,
-        functions=functions,
-        function_call=_function_call,
-    )
+    def get_response(messages: list):
+        try:
+            response = llm(
+                prompt_messages,
+                functions=functions,
+                function_call=_function_call,
+            )
 
-    st.session_state.ai_message_content = response.content
-    function_call = response.additional_kwargs.get("function_call", None)
-    if function_call:
-        st.session_state.ai_message_function_name = function_call["name"]
-        st.session_state.ai_message_function_arguments = function_call["arguments"]
-    else:
-        st.session_state.ai_message_function_name = ""
-        st.session_state.ai_message_function_arguments = ""
+            functions_tokens = int(
+                llm.get_num_tokens(str(functions)) / 2)  # function tokens are counted twice for some reason
+            messages_tokens = llm.get_num_tokens_from_messages(messages)
+            total_tokens = functions_tokens + messages_tokens
+            st.write(f"Messages tokens: {str(messages_tokens)}  \n"
+                     f"Functions tokens: {str(functions_tokens)}  \n"
+                     f"Total tokens: {str(total_tokens)}")
 
-    # AI message
-    with st.chat_message("assistant"):
-        with st.form("ai_message"):
-            st.text_area(
-                "Content",
-                key="ai_message_content",
-            )
-            function_call = response.additional_kwargs.get("function_call", {})
-            st.text_input(
-                "Function call",
-                key="ai_message_function_name",
-            )
-            st.text_area(
-                "Arguments",
-                key="ai_message_function_arguments",
-            )
-            st.form_submit_button(
-                "Commit agent completion",
-                on_click=lambda: run_on_submit(name_to_tool_map),
-            )
+            return response
+        except InvalidRequestError as e:
+            with (st.chat_message("assistant")):
+                st.write(e._message)
+
+    try:
+        response = get_response(prompt_messages)
+
+        st.session_state.ai_message_content = response.content
+        function_call = response.additional_kwargs.get("function_call", None)
+        if function_call:
+            st.session_state.ai_message_function_name = function_call["name"]
+            st.session_state.ai_message_function_arguments = function_call["arguments"]
+        else:
+            st.session_state.ai_message_function_name = ""
+            st.session_state.ai_message_function_arguments = ""
+
+        # AI message
+        with st.chat_message("assistant"):
+            with st.form("ai_message"):
+                st.text_area(
+                    "Content",
+                    key="ai_message_content",
+                )
+                function_call = response.additional_kwargs.get("function_call", {})
+                st.text_input(
+                    "Function call",
+                    key="ai_message_function_name",
+                )
+                st.text_area(
+                    "Arguments",
+                    key="ai_message_function_arguments",
+                )
+                st.form_submit_button(
+                    "Commit agent completion",
+                    on_click=lambda: run_on_submit(name_to_tool_map),
+                )
+
+    except AttributeError:
+        pass
 
 
 if __name__ == "__main__":
