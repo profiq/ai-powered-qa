@@ -5,18 +5,13 @@ import os
 
 import streamlit as st
 from dotenv import load_dotenv
-from langchain.chat_models import ChatOpenAI
-from langchain.schema.messages import AIMessage, FunctionMessage, HumanMessage, SystemMessage
 from langchain.tools.convert_to_openai import format_tool_to_openai_function
-from openai import InvalidRequestError
 from streamlit.errors import DuplicateWidgetID
 
 import components.context_message
 from components.constants import llm_models, function_call_defaults
 from components.function_caller import get_browser, get_tools, call_function
-from components.logging_handler import LoggingHandler
 
-from constants import llm_models, function_call_defaults
 from chat_model import ProfiqDevAIConfig, ChatCompletionInputs, ProfiqDevAI
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
@@ -39,17 +34,17 @@ if "ai_message_function_arguments" not in st.session_state:
     st.session_state.ai_message_function_arguments = ""
 
 
-@st.cache_data
-def load_conversation_history(project_name, test_case):
+def load_conversation_history(conversation_history_path):
     try:
-        with open(f"projects/{project_name}/{test_case}/conversation_history.json", "r") as f:
-            st.session_state.messages = json.load(f)
-            return st.session_state.messages
-    except:
+        with open(conversation_history_path, "r"
+                  ) as f:
+            conversation_history = json.load(f)
+            return conversation_history
+    except FileNotFoundError:
+        os.makedirs(os.path.dirname(conversation_history_path), exist_ok=True)
         return []
 
 
-@st.cache_resource
 async def on_submit(response):
     if st.session_state.user_message_content:
         st.session_state.messages.append(
@@ -82,6 +77,11 @@ async def on_submit(response):
                 "content": function_response,
             }
         )
+
+    # history = json.dumps(st.session_state.messages, indent=4)
+
+    # with open(conversation_history_path, "w") as f:
+    #     f.write(json.dumps(history))
     st.session_state.user_message_content = ""
     st.session_state.ai_message_content = ""
     st.session_state.ai_message_function_name = ""
@@ -120,8 +120,8 @@ def get_function_call_options(functions):
 def setup_llm(project_name, test_case):
     return ProfiqDevAI(
         config=ProfiqDevAIConfig(
-            project_name="",
-            test_case="",
+            project_name=project_name,
+            test_case=test_case,
             x_last_messages=10,
         ))
 
@@ -140,16 +140,16 @@ async def main():
         st.cache_data.clear()
         st.stop()
 
+    # CONVERSATION_HISTORY = f"projects/{project_name}/{test_case}/conversation_history.json"
+
     # Load conversation file
-    # load_conversation_history(project_name, test_case)
+    # st.session_state.messages = load_conversation_history(CONVERSATION_HISTORY)
 
     # System message
     with st.chat_message("system"):
         system_message = st.text_area(
             label="System message",
-            value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the user.",
-            "System message",
-            "You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the "
+            value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the "
             "user.\nFollow these steps when answering the user.\n Step 1. Consider you have all information necessary, "
             "if not, ask the user. In the system messages you have a simplified html of the webpage. Please, "
             "look for relevant information (like text elemets, ids, errors, warnings, messages) and use this information to propose next steps.\n"
@@ -169,7 +169,8 @@ async def main():
             with st.chat_message("assistant"):
                 if message["content"]:
                     try:
-                        message["content"] = st.text_area(label="Assistant Message", value=message["content"])
+                        message["content"] = st.text_area(
+                            label="Assistant Message", value=message["content"])
                     except DuplicateWidgetID:
                         st.write(message["content"])
                 function_call = message.get("function_call", None)
@@ -178,11 +179,10 @@ async def main():
                         message["function_call"]["arguments"] = st.text_area(label="function_call",
                                                                              value=function_call["arguments"],
                                                                              label_visibility="collapsed")
-                prompt_messages.append(AIMessage(**message))
         elif message["role"] == "user":
             with st.chat_message("user"):
-                message["content"] = st.text_area(label="User Message", value=message["content"])
-                prompt_messages.append(HumanMessage(**message))
+                message["content"] = st.text_area(
+                    label="User Message", value=message["content"])
 
     # Check last message
     last_message = None
@@ -204,7 +204,10 @@ async def main():
                 label_visibility="collapsed",
             )
             if user_message_content:
-                st.session_state.user_message_content = user_message_content
+                last_message = {
+                    "role": "user",
+                    "content": st.session_state.user_message_content,
+                }
             else:
                 st.stop()
 
@@ -212,8 +215,8 @@ async def main():
 
     context_message = await components.context_message.get_context_message(async_browser)
     with st.chat_message("system"):
-        context_message.content = st.text_area(label="Context message", value=context_message.content)
-        st.write(context_message)
+        context_message = st.text_area(
+            label="Context message", value=context_message)
 
     tools = await get_tools(browser=st.session_state.browser)
     functions = [format_tool_to_openai_function(t) for t in tools]
@@ -248,34 +251,14 @@ async def main():
     llm = setup_llm(project_name, test_case)
     # Call LLM
     # TODO functions dont work
-    response = llm.chat_completion(ChatCompletionInputs(
-        gpt_model=gpt_model, conversation_history=json.dumps(st.session_state.messages), functions=functions,
-        function_call=function_call_option, system_messages=json.dumps([
-                                                                       system_message]),
-        context_messages=json.dumps([context_message])))
-
-    def get_response(messages: list):
-        try:
-            response = llm(
-                prompt_messages,
-                functions=functions,
-                function_call=_function_call,
-            )
-
-            functions_tokens = int(llm.get_num_tokens(str(functions))/2)  # function tokens are counted twice
-            messages_tokens = llm.get_num_tokens_from_messages(messages)
-            total_tokens = functions_tokens + messages_tokens
-
-            st.write(f"Messages tokens: {str(messages_tokens)}  \n"
-                     f"Functions tokens: {str(functions_tokens)}  \n"
-                     f"Total tokens: {str(total_tokens)}")
-            return response
-        except InvalidRequestError as e:
-            with (st.chat_message("assistant")):
-                st.write(e._message)
-
     try:
-        response = get_response(prompt_messages)
+        response, token_counter = llm.chat_completion(ChatCompletionInputs(
+            gpt_model=gpt_model, conversation_history=json.dumps(st.session_state.messages), functions=functions,
+            function_call=function_call_option, system_messages=json.dumps([
+                system_message]),
+            context_messages=json.dumps([context_message]), last_message=last_message))
+        # I think the number of tokens is written in the langchain response. So perhaps we could use that.
+        st.write(token_counter)
 
         st.session_state.ai_message_content = response.content
         function_call = response.additional_kwargs.get("function_call", None)
@@ -293,7 +276,8 @@ async def main():
                     "Content",
                     key="ai_message_content",
                 )
-                function_call = response.additional_kwargs.get("function_call", {})
+                function_call = response.additional_kwargs.get(
+                    "function_call", {})
                 st.text_input(
                     "Function call",
                     key="ai_message_function_name",
@@ -307,8 +291,8 @@ async def main():
                     on_click=lambda: run_on_submit(function_call),
                 )
 
-    except AttributeError:
-        pass
+    except AttributeError as e:
+        st.write(e)
 
 
 if __name__ == "__main__":
