@@ -163,7 +163,7 @@ class GPT:
                         break
 
         file_path = f"tests/{'example'}.spec.ts"
-        shutil.move('tempfile', file_path)
+        shutil.move('../tempfile', file_path)
 
         return file_path
 
@@ -203,7 +203,7 @@ class GPT:
             return None
 
     def _write_test_header(self):
-        with open('tempfile', 'w') as f:
+        with open('../tempfile', 'w') as f:
             f.write("import { test, expect } from '@playwright/test';\n\n")
             f.write(
                 f"test('{'My example test name'}', async ({{ page }}) => {{\n")
@@ -212,7 +212,7 @@ class GPT:
         print(f"{message['role'].upper()}: {message['content']}")
 
     def _write_test_footer(self):
-        with open('tempfile', 'a') as f:
+        with open('../tempfile', 'a') as f:
             f.write("});\n\n")
 
 

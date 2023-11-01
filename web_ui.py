@@ -6,16 +6,15 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 from langchain.chat_models import ChatOpenAI
-from langchain.schema.messages import (AIMessage, FunctionMessage, HumanMessage, SystemMessage)
+from langchain.schema.messages import AIMessage, FunctionMessage, HumanMessage, SystemMessage
 from langchain.tools.convert_to_openai import format_tool_to_openai_function
-from langchain.tools.playwright.utils import (aget_current_page)
 from openai import InvalidRequestError
 from streamlit.errors import DuplicateWidgetID
 
-from constants import llm_models, function_call_defaults
-from langchain_modules.toolkit import PlayWrightBrowserToolkit
-from logging_handler import LoggingHandler
-from utils import amark_invisible_elements, strip_html_to_structure
+import components.context_message
+from components.constants import llm_models, function_call_defaults
+from components.function_caller import get_browser, get_tools, call_function
+from components.logging_handler import LoggingHandler
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
@@ -41,21 +40,11 @@ if "ai_message_function_arguments" not in st.session_state:
 @st.cache_data
 def load_conversation_history(project_name, test_case):
     try:
-        with open(
-                f"projects/{project_name}/{test_case}/conversation_history.json", "r"
-        ) as f:
+        with open(f"projects/{project_name}/{test_case}/conversation_history.json", "r") as f:
             st.session_state.messages = json.load(f)
             return st.session_state.messages
     except:
         return []
-
-
-@st.cache_resource
-def get_tools():
-    async_browser = st.session_state.browser
-    toolkit = PlayWrightBrowserToolkit.from_browser(async_browser=async_browser)
-    tools = toolkit.get_tools()
-    return tools
 
 
 @st.cache_resource
@@ -74,33 +63,7 @@ def setup_logging_handler(project_name, test_case):
     return LoggingHandler(project_name, test_case)
 
 
-async def get_context_message(browser):
-    page = await aget_current_page(browser)
-    await amark_invisible_elements(page)
-
-    html_content = await page.content()
-    stripped_html = strip_html_to_structure(html_content)
-
-    context_message = SystemMessage(
-        content=(
-            f"Here is the current state of the browser:\n"
-            f"```\n"
-            f"{stripped_html}\n"
-            f"```\n"
-        ),
-    )
-    return context_message
-
-
-async def get_browser():
-    from playwright.async_api import async_playwright
-
-    browser = await async_playwright().start()
-    async_browser = await browser.chromium.launch(headless=False)
-    return async_browser
-
-
-async def on_submit(name_to_tool_map):
+async def on_submit(response):
     if st.session_state.user_message_content:
         st.session_state.messages.append(
             {
@@ -123,11 +86,8 @@ async def on_submit(name_to_tool_map):
         }
     )
     if st.session_state.ai_message_function_name:
-        tool = name_to_tool_map[st.session_state.ai_message_function_name]
-        function_arguments = json.loads(st.session_state.ai_message_function_arguments)
-        function_response = await tool._arun(
-            **function_arguments,
-        )
+        function_response = await call_function(browser=st.session_state.browser, json_function=response)
+
         st.session_state.messages.append(
             {
                 "role": "function",
@@ -141,12 +101,12 @@ async def on_submit(name_to_tool_map):
     st.session_state.ai_message_function_arguments = ""
 
 
-def run_on_submit(name_to_tool_map):
-    # reset the options, unpredicateable behaviour otherwise
+def run_on_submit(response):
+    # reset the options, unpredictable behaviour otherwise
     st.session_state.function_call_option = function_call_defaults[0]
     st.session_state.gpt_model = llm_models[0]
     asyncio.set_event_loop(st.session_state.loop)
-    return st.session_state.loop.run_until_complete(on_submit(name_to_tool_map))
+    return st.session_state.loop.run_until_complete(on_submit(response))
 
 
 def save_conversation_history(project_name: str, test_case: str):
@@ -204,7 +164,7 @@ async def main():
                 st.write(f"**{message['name']}**")
                 st.write(message["content"])
         elif message["role"] == "assistant":
-            with st.chat_message("system"):
+            with st.chat_message("assistant"):
                 if message["content"]:
                     try:
                         message["content"] = st.text_area(label="Assistant Message", value=message["content"])
@@ -248,14 +208,13 @@ async def main():
 
     # Context message
 
-    context_message = await get_context_message(async_browser)
+    context_message = await components.context_message.get_context_message(async_browser)
     with st.chat_message("system"):
         context_message.content = st.text_area(label="Context message", value=context_message.content)
     prompt_messages.append(context_message)
 
-    tools = get_tools()
+    tools = await get_tools(browser=st.session_state.browser)
     functions = [format_tool_to_openai_function(t) for t in tools]
-    name_to_tool_map = {tool.name: tool for tool in tools}
 
     # Call LLM
 
@@ -300,14 +259,13 @@ async def main():
                 function_call=_function_call,
             )
 
-            functions_tokens = int(
-                llm.get_num_tokens(str(functions)) / 2)  # function tokens are counted twice for some reason
+            functions_tokens = int(llm.get_num_tokens(str(functions))/2)  # function tokens are counted twice
             messages_tokens = llm.get_num_tokens_from_messages(messages)
             total_tokens = functions_tokens + messages_tokens
+
             st.write(f"Messages tokens: {str(messages_tokens)}  \n"
                      f"Functions tokens: {str(functions_tokens)}  \n"
                      f"Total tokens: {str(total_tokens)}")
-
             return response
         except InvalidRequestError as e:
             with (st.chat_message("assistant")):
@@ -343,7 +301,7 @@ async def main():
                 )
                 st.form_submit_button(
                     "Commit agent completion",
-                    on_click=lambda: run_on_submit(name_to_tool_map),
+                    on_click=lambda: run_on_submit(function_call),
                 )
 
     except AttributeError:
