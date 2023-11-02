@@ -46,13 +46,13 @@ def load_conversation_history(conversation_history_path):
 
 
 async def on_submit(response):
-    if st.session_state.user_message_content:
-        st.session_state.messages.append(
-            {
-                "role": "user",
-                "content": st.session_state.user_message_content,
-            }
-        )
+    # if st.session_state.user_message_content:
+    #     st.session_state.messages.append(
+    #         {
+    #             "role": "user",
+    #             "content": st.session_state.user_message_content,
+    #         }
+    #     )
     st.session_state.messages.append(
         {
             "role": "assistant",
@@ -78,10 +78,6 @@ async def on_submit(response):
             }
         )
 
-    # history = json.dumps(st.session_state.messages, indent=4)
-
-    # with open(conversation_history_path, "w") as f:
-    #     f.write(json.dumps(history))
     st.session_state.user_message_content = ""
     st.session_state.ai_message_content = ""
     st.session_state.ai_message_function_name = ""
@@ -160,7 +156,9 @@ async def main():
         )
 
     # Write conversation history
-    for message in st.session_state.messages:
+    for key, message in enumerate(st.session_state.messages):
+        # This loop is only for writing the conversation history and for modifying previous messages.
+        # Use unique keys to avoid DuplicateWidgetID error
         if message["role"] == "function":
             with st.chat_message("function"):
                 st.write(f"**{message['name']}**")
@@ -168,22 +166,17 @@ async def main():
         elif message["role"] == "assistant":
             with st.chat_message("assistant"):
                 if message["content"]:
-                    try:
-                        message["content"] = st.text_area(
-                            label="Assistant Message", value=message["content"])
-                    except DuplicateWidgetID:
-                        st.write(message["content"])
+                    message["content"] = st.text_area(
+                        label="Assistant Message", value=message["content"], key=f"assistant_{key}")
                 function_call = message.get("function_call", None)
                 if function_call:
                     with st.status(function_call["name"], state="complete"):
                         message["function_call"]["arguments"] = st.text_area(label="function_call",
-                                                                             value=function_call["arguments"],
-                                                                             label_visibility="collapsed")
+                                                                            value=function_call["arguments"],
+                                                                            label_visibility="collapsed", key=f"function_call_{key}")
         elif message["role"] == "user":
             with st.chat_message("user"):
-                message["content"] = st.text_area(
-                    label="User Message", value=message["content"])
-
+                message["content"] = st.text_area(label="User Message", value=message["content"], key=f"user_{key}")
     # Check last message
     last_message = None
     if st.session_state.messages:
@@ -191,12 +184,6 @@ async def main():
 
     # User message
     if last_message is None or last_message["role"] == "assistant":
-        if last_message is not None:
-            st.button(
-                "Save conversation history",
-                on_click=save_conversation_history,
-                args=(project_name, test_case),
-            )
         with st.chat_message("user"):
             user_message_content = st.text_area(
                 "User message content",
@@ -204,10 +191,12 @@ async def main():
                 label_visibility="collapsed",
             )
             if user_message_content:
+                # append the user message instantly to the conversation
                 last_message = {
                     "role": "user",
                     "content": st.session_state.user_message_content,
                 }
+                st.session_state.messages.append(last_message)
             else:
                 st.stop()
 
@@ -248,15 +237,22 @@ async def main():
         function_call_option,
         ".",
     )
+
+    if last_message is not None:
+        st.button(
+            "Save conversation history",
+            on_click=save_conversation_history,
+            args=(project_name, test_case),
+        )
+
     llm = setup_llm(project_name, test_case)
     # Call LLM
-    # TODO functions dont work
     try:
         response, token_counter = llm.chat_completion(ChatCompletionInputs(
             gpt_model=gpt_model, conversation_history=json.dumps(st.session_state.messages), functions=functions,
             function_call=function_call_option, system_messages=json.dumps([
                 system_message]),
-            context_messages=json.dumps([context_message]), last_message=last_message))
+            context_messages=json.dumps([context_message])))
         # I think the number of tokens is written in the langchain response. So perhaps we could use that.
         st.write(token_counter)
 
