@@ -46,13 +46,6 @@ def load_conversation_history(conversation_history_path):
 
 
 async def on_submit(response):
-    # if st.session_state.user_message_content:
-    #     st.session_state.messages.append(
-    #         {
-    #             "role": "user",
-    #             "content": st.session_state.user_message_content,
-    #         }
-    #     )
     st.session_state.messages.append(
         {
             "role": "assistant",
@@ -136,11 +129,6 @@ async def main():
         st.cache_data.clear()
         st.stop()
 
-    # CONVERSATION_HISTORY = f"projects/{project_name}/{test_case}/conversation_history.json"
-
-    # Load conversation file
-    # st.session_state.messages = load_conversation_history(CONVERSATION_HISTORY)
-
     # System message
     with st.chat_message("system"):
         system_message = st.text_area(
@@ -168,15 +156,18 @@ async def main():
                 if message["content"]:
                     message["content"] = st.text_area(
                         label="Assistant Message", value=message["content"], key=f"assistant_{key}")
-                function_call = message.get("function_call", None)
+                function_call = message["additional_kwargs"].get(
+                    "function_call", None)
                 if function_call:
                     with st.status(function_call["name"], state="complete"):
-                        message["function_call"]["arguments"] = st.text_area(label="function_call",
-                                                                            value=function_call["arguments"],
-                                                                            label_visibility="collapsed", key=f"function_call_{key}")
+                        message["additional_kwargs"]["function_call"]["arguments"] = st.text_area(label="function_call",
+                                                                                                  value=function_call["arguments"],
+                                                                                                  label_visibility="collapsed", key=f"function_call_{key}")
         elif message["role"] == "user":
             with st.chat_message("user"):
-                message["content"] = st.text_area(label="User Message", value=message["content"], key=f"user_{key}")
+                message["content"] = st.text_area(
+                    label="User Message", value=message["content"], key=f"user_{key}")
+
     # Check last message
     last_message = None
     if st.session_state.messages:
@@ -184,6 +175,11 @@ async def main():
 
     # User message
     if last_message is None or last_message["role"] == "assistant":
+        st.button(
+            "Save conversation history",
+            on_click=save_conversation_history,
+            args=(project_name, test_case),
+        )
         with st.chat_message("user"):
             user_message_content = st.text_area(
                 "User message content",
@@ -201,7 +197,6 @@ async def main():
                 st.stop()
 
     # Context message
-
     context_message = await components.context_message.get_context_message(async_browser)
     with st.chat_message("system"):
         context_message = st.text_area(
@@ -238,13 +233,6 @@ async def main():
         ".",
     )
 
-    if last_message is not None:
-        st.button(
-            "Save conversation history",
-            on_click=save_conversation_history,
-            args=(project_name, test_case),
-        )
-
     llm = setup_llm(project_name, test_case)
     # Call LLM
     try:
@@ -256,8 +244,8 @@ async def main():
         # I think the number of tokens is written in the langchain response. So perhaps we could use that.
         st.write(token_counter)
 
-        st.session_state.ai_message_content = response.content
-        function_call = response.additional_kwargs.get("function_call", None)
+        st.session_state.ai_message_content = response["choices"][0]["message"]["content"]
+        function_call = response["choices"][0]["message"].get("function_call", None)
         if function_call:
             st.session_state.ai_message_function_name = function_call["name"]
             st.session_state.ai_message_function_arguments = function_call["arguments"]
@@ -272,7 +260,7 @@ async def main():
                     "Content",
                     key="ai_message_content",
                 )
-                function_call = response.additional_kwargs.get(
+                function_call = response["choices"][0]["message"].get(
                     "function_call", {})
                 st.text_input(
                     "Function call",

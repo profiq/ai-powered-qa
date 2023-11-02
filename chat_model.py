@@ -21,15 +21,11 @@ class ProfiqDevAIConfig:
 @dataclass
 class ChatCompletionInputs:
     gpt_model: str
-    # the last message can be optional. Why?
-    # Consider two cases:
-        # 
     conversation_history: str
     functions: dict
     function_call: str
     system_messages: str
     context_messages: str
-    last_message: str = None
 
 
 class ProfiqDevAI:
@@ -48,7 +44,7 @@ class ProfiqDevAI:
         Function to call the chat completion of the model."""
         llm = self._get_llm(inputs.gpt_model)
         prompt_messages = self._get_prompts(
-            inputs.system_messages, inputs.conversation_history, inputs.context_messages, inputs.last_message)
+            inputs.system_messages, inputs.conversation_history, inputs.context_messages)
         function_call = self._format_function_call(
             inputs.function_call, inputs.functions)
 
@@ -68,11 +64,10 @@ class ProfiqDevAI:
                 f"Functions tokens: {str(functions_tokens)}  \n" \
                 f"Total tokens: {str(total_tokens)}"
 
-
             # TODO here needs to be a function to parse the response from the langchain world to our world. Verify that
             # accept json and return only json!!!
-            # self._convert_langchain_to_json(response)
-            return response, token_counter_manual
+            
+            return self._convert_langchain_to_json(response), token_counter_manual
         except InvalidRequestError as e:
             return e._message
 
@@ -88,19 +83,15 @@ class ProfiqDevAI:
     def _setup_logging_handler(self):
         return LoggingHandler(self.project_name, self.test_case)
 
-    def _get_prompts(self, system_messages: json, conversation_history: json, context_messages: json, last_message: json = None):
+    def _get_prompts(self, system_messages: json, conversation_history: json, context_messages: json):
         prompt_messages = []
         system_messages = json.loads(system_messages)
         for system_message in system_messages:
             prompt_messages.append(SystemMessage(content=system_message))
 
         messages = json.loads(conversation_history)
-        
+
         print("messages:", messages, "\n")
-        print("last_message:", last_message, "\n")
-        print("\n\n\n\n\n")
-        if last_message:
-            messages.append(last_message)
         # logic for message retrieval. Can be x last messages, or summary ...
         for message in messages[-self.x_last_messages:]:
             if message["role"] == "function":
@@ -129,7 +120,16 @@ class ProfiqDevAI:
                 f"Function {function_call} not in functions defined for the model.")
 
     def _convert_langchain_to_json(self, response):
-        # TODO here needs to be a function to parse the response from the langchain world to our world.
         # Following the openAI API https://platform.openai.com/docs/api-reference/chat/object
-        print(response, type(response))
-        pass
+        json_response = {"choices": [
+            {"message": {
+                "content": response.content if response.content else None,
+                "role": "assistant",
+            }}
+        ]}
+        # We only do 1 response. If that chages, this needs to be changed.
+        function_call = response.additional_kwargs.get("function_call", None)
+        if function_call:
+            json_response["choices"][0]["message"]["function_call"] = function_call
+        return json_response
+
