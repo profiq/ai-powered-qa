@@ -12,7 +12,7 @@ import components.context_message
 from components.constants import llm_models, function_call_defaults
 from components.function_caller import get_browser, get_tools, call_function
 
-from chat_model import ProfiqDevAIConfig, ChatCompletionInputs, ProfiqDevAI
+from components.chat_model import ProfiqDevAIConfig, ChatCompletionInputs, ProfiqDevAI
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -32,17 +32,6 @@ if "ai_message_function_name" not in st.session_state:
     st.session_state.ai_message_function_name = ""
 if "ai_message_function_arguments" not in st.session_state:
     st.session_state.ai_message_function_arguments = ""
-
-
-def load_conversation_history(conversation_history_path):
-    try:
-        with open(conversation_history_path, "r"
-                  ) as f:
-            conversation_history = json.load(f)
-            return conversation_history
-    except FileNotFoundError:
-        os.makedirs(os.path.dirname(conversation_history_path), exist_ok=True)
-        return []
 
 
 async def on_submit(response):
@@ -133,12 +122,7 @@ async def main():
     with st.chat_message("system"):
         system_message = st.text_area(
             label="System message",
-            value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the "
-            "user.\nFollow these steps when answering the user.\n Step 1. Consider you have all information necessary, "
-            "if not, ask the user. In the system messages you have a simplified html of the webpage. Please, "
-            "look for relevant information (like text elemets, ids, errors, warnings, messages) and use this information to propose next steps.\n"
-            "Step 2. Consider if the proposed step makes sense and think about next steps.\n "
-            "Step 3. Propose the next step to the user.\n",
+            value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the user",
             key="system_message",
             label_visibility="collapsed",
         )
@@ -160,9 +144,9 @@ async def main():
                     "function_call", None)
                 if function_call:
                     with st.status(function_call["name"], state="complete"):
-                        message["additional_kwargs"]["function_call"]["arguments"] = st.text_area(label="function_call",
-                                                                                                  value=function_call["arguments"],
-                                                                                                  label_visibility="collapsed", key=f"function_call_{key}")
+                        st.text_area(label="function_call",
+                                     value=function_call["arguments"],
+                                     label_visibility="collapsed", key=f"function_call_{key}")
         elif message["role"] == "user":
             with st.chat_message("user"):
                 message["content"] = st.text_area(
@@ -205,7 +189,7 @@ async def main():
     tools = await get_tools(browser=st.session_state.browser)
     functions = [format_tool_to_openai_function(t) for t in tools]
 
-    # Get chatcompletion inputs
+    # Rerun LLM with new parameters
     col1, col2 = st.columns(2)
     with col1:
         function_call_option = st.selectbox(
@@ -237,15 +221,16 @@ async def main():
     # Call LLM
     try:
         response, token_counter = llm.chat_completion(ChatCompletionInputs(
-            gpt_model=gpt_model, conversation_history=json.dumps(st.session_state.messages), functions=functions,
-            function_call=function_call_option, system_messages=json.dumps([
-                system_message]),
+            gpt_model=gpt_model,
+            conversation_history=json.dumps(st.session_state.messages),
+            functions=json.dumps(functions),
+            function_call=function_call_option,
+            system_messages=json.dumps([system_message]),
             context_messages=json.dumps([context_message])))
-        # I think the number of tokens is written in the langchain response. So perhaps we could use that.
         st.write(token_counter)
 
-        st.session_state.ai_message_content = response["choices"][0]["message"]["content"]
-        function_call = response["choices"][0]["message"].get("function_call", None)
+        st.session_state.ai_message_content = response.content
+        function_call = response.additional_kwargs.get("function_call", None)
         if function_call:
             st.session_state.ai_message_function_name = function_call["name"]
             st.session_state.ai_message_function_arguments = function_call["arguments"]
@@ -260,7 +245,7 @@ async def main():
                     "Content",
                     key="ai_message_content",
                 )
-                function_call = response["choices"][0]["message"].get(
+                function_call = response.additional_kwargs.get(
                     "function_call", {})
                 st.text_input(
                     "Function call",

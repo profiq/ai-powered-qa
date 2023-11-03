@@ -10,6 +10,7 @@ tempfile
 logfile
 token_usage*.log
 *.log
+test_logs
 
 __pycache__
 .venv
