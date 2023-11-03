@@ -13,9 +13,9 @@ from streamlit.errors import DuplicateWidgetID
 
 import components.context_message
 from components.constants import llm_models, function_call_defaults
-from components.function_caller import get_browser, get_tools, call_function
+from components.function_caller import get_browser, get_tools
 from components.logging_handler import LoggingHandler
-
+from components.json_handler import get_user_message, get_function_message, get_assistant_message
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -65,36 +65,13 @@ def setup_logging_handler(project_name, test_case):
 
 async def on_submit(response):
     if st.session_state.user_message_content:
-        st.session_state.messages.append(
-            {
-                "role": "user",
-                "content": st.session_state.user_message_content,
-            }
-        )
-    st.session_state.messages.append(
-        {
-            "role": "assistant",
-            "content": st.session_state.ai_message_content,
-            "additional_kwargs": {
-                "function_call": {
-                    "name": st.session_state.ai_message_function_name,
-                    "arguments": st.session_state.ai_message_function_arguments,
-                }
-            }
-            if st.session_state.ai_message_function_name
-            else {},
-        }
-    )
-    if st.session_state.ai_message_function_name:
-        function_response = await call_function(browser=st.session_state.browser, json_function=response)
+        st.session_state.messages.append(get_user_message(st))
 
-        st.session_state.messages.append(
-            {
-                "role": "function",
-                "name": st.session_state.ai_message_function_name,
-                "content": function_response,
-            }
-        )
+    st.session_state.messages.append(get_assistant_message(st))
+
+    if st.session_state.ai_message_function_name:
+        st.session_state.messages.append(await get_function_message(st, response))
+
     st.session_state.user_message_content = ""
     st.session_state.ai_message_content = ""
     st.session_state.ai_message_function_name = ""
@@ -150,7 +127,8 @@ async def main():
     with st.chat_message("system"):
         system_message = st.text_area(
             label="System message",
-            value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the user.",
+            value="You are a QA engineer controlling a browser. "
+                  "Your goal is to plan and go through a test scenario with the user.",
             key="system_message",
             label_visibility="collapsed",
         )
@@ -223,8 +201,8 @@ async def main():
         function_call_option = st.selectbox(
             "Force function call?",
             get_function_call_options(functions),
-            help="'auto' leaves the decision to the model,"
-                 " 'none' forces a generated message, or choose a specific function.",
+            help="'auto' leaves the decision to the model, "
+                 "'none' forces a generated message, or choose a specific function.",
             index=0,
             key="function_call_option",
         )
