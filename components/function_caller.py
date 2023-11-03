@@ -30,6 +30,7 @@ async def call_function(browser, json_function: json):
     name_to_tool_map = {tool.name: tool for tool in tools}
 
     tool = name_to_tool_map[json_function["name"]]
+    # TODO this line sometimes fails if LLM returns an invalid json.
     function_arguments = json.loads(json_function["arguments"])
     function_response = await tool._arun(**function_arguments)
     return function_response
