@@ -1,5 +1,5 @@
 import asyncio
-import json
+import ast
 
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
@@ -20,17 +20,17 @@ async def get_browser():
 
 async def get_tools(browser) -> list:
     async_browser = browser
-    toolkit = PlayWrightBrowserToolkit.from_browser(async_browser=async_browser)
+    toolkit = PlayWrightBrowserToolkit.from_browser(
+        async_browser=async_browser)
     tools = toolkit.get_tools()
     return tools
 
 
-async def call_function(browser, json_function: json):
+async def call_function(browser, json_function: dict):
     tools = await get_tools(browser)
     name_to_tool_map = {tool.name: tool for tool in tools}
-
     tool = name_to_tool_map[json_function["name"]]
-    # TODO this line sometimes fails if LLM returns an invalid json.
-    function_arguments = json.loads(json_function["arguments"])
+    # arguments are string in dict format
+    function_arguments = ast.literal_eval(json_function["arguments"])
     function_response = await tool._arun(**function_arguments)
     return function_response
