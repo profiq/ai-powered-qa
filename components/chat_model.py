@@ -1,14 +1,16 @@
 import json
+from dataclasses import dataclass
+
 from langchain.chat_models import ChatOpenAI
-from openai import InvalidRequestError
-from components.logging_handler import LoggingHandler
 from langchain.schema.messages import (
     AIMessage,
     FunctionMessage,
     HumanMessage,
     SystemMessage,
 )
-from dataclasses import dataclass
+from openai import InvalidRequestError
+
+from components.logging_handler import LoggingHandler
 
 
 @dataclass
@@ -57,7 +59,6 @@ class ProfiqDevAI:
         """
         AI developer made by profiq."""
 
-        self.project_name = config.project_name
         self.test_case = config.test_case
         self.x_last_messages = config.x_last_messages
         self.logging_handler = self._setup_logging_handler()
@@ -65,13 +66,10 @@ class ProfiqDevAI:
     def chat_completion(self, inputs: ChatCompletionInputs):
         """
         Chat completion. Pass inputs to the AI model and return the response."""
-        functions = json.loads(
-            inputs.functions)  # TODO: functions shouln't be a mandatory parameter, make it optional
+        functions = json.loads(inputs.functions)  # TODO: functions shouldn't be a mandatory parameter, make it optional
         llm = self._get_llm(inputs.gpt_model)
-        prompt_messages = self._get_prompts(
-            inputs.system_messages, inputs.conversation_history, inputs.context_messages)
-        function_call = self._format_function_call(
-            inputs.function_call, functions)
+        prompt_messages = self._get_prompts(inputs.system_messages, inputs.conversation_history, inputs.context_messages)
+        function_call = self._format_function_call(inputs.function_call, functions)
 
         try:
             response = llm(
@@ -86,18 +84,18 @@ class ProfiqDevAI:
             total_tokens = functions_tokens + messages_tokens
 
             token_counter = f"Messages tokens: {str(messages_tokens)}  \n" \
-                f"Functions tokens: {str(functions_tokens)}  \n" \
-                f"Total tokens: {str(total_tokens)}"
+                            f"Functions tokens: {str(functions_tokens)}  \n" \
+                            f"Total tokens: {str(total_tokens)}"
 
             # TODO here needs to be a function to parse the response from the langchain world to our world.
-            # self._convert_langchain_to_json(response)
+            response = self._convert_langchain_to_json(response)
             return response, token_counter
-        except InvalidRequestError as e:
-            # So the web_ui script doesnt crash
+        except InvalidRequestError as e:    # So the web_ui script doesn't crash
             return e._message
 
     def _get_llm(self, gpt_model: str):
-        """Create an instance of the LLM. We create a new instance each time so that we can change the gpt_model during runtime"""
+        """Create an instance of the LLM.
+        We create a new instance each time so that we can change the gpt_model during runtime"""
         llm = ChatOpenAI(
             model=gpt_model,
             streaming=False,
@@ -121,12 +119,16 @@ class ProfiqDevAI:
 
         # logic for message retrieval.
         for message in messages[-self.x_last_messages:]:
-            if message["role"] == "function":
-                prompt_messages.append(FunctionMessage(**message))
-            elif message["role"] == "assistant":
-                prompt_messages.append(AIMessage(**message))
-            elif message["role"] == "user":
-                prompt_messages.append(HumanMessage(**message))
+            message = message["choices"][0]["message"]
+            if message.get("role", None):
+
+                prompt_messages.append(message)
+                # if message["role"] == "function":
+                #     prompt_messages.append(FunctionMessage(**message))
+                # elif message["role"] == "assistant":
+                #     prompt_messages.append(AIMessage(**message))
+                # elif message["role"] == "user":
+                #     prompt_messages.append(HumanMessage(**message))
 
         if context_messages:
             context_messages = json.loads(context_messages)
@@ -142,22 +144,25 @@ class ProfiqDevAI:
             return {"name": function_call}
         return function_call
 
-    def _validate_function(self, function_call: str, functions: str):
+    @staticmethod
+    def _validate_function(function_call: str, functions: str):
         if function_call not in [function["name"] for function in functions]:
             raise ValueError(
                 f"Function {function_call} not in functions defined for the model.")
 
-    def _convert_langchain_to_json(self, response):
-        # Following the openAI API https://platform.openai.com/docs/api-reference/chat/object or just leave it as langchain api?
+    @staticmethod
+    def _convert_langchain_to_json(response):
+        # Following the openAI API
+        # https://platform.openai.com/docs/api-reference/chat/object or just leave it as langchain api?
         json_response = {"choices": [
-            {"message": {
-                "content": response.content if response.content else None,
-                "role": "assistant",
-            }}
-        ]}
-        # We only do 1 response. If that chages, this needs to be changed.
+                            {"message": {
+                                "content": response.content if response.content else None,
+                                "role": "assistant",
+                            }}
+                        ]}
+        # We only do 1 response. If that changes, this needs to be changed.
+        print(response)
         function_call = response.additional_kwargs.get("function_call", None)
         if function_call:
             json_response["choices"][0]["message"]["function_call"] = function_call
-        
         return json.dumps(json_response)
