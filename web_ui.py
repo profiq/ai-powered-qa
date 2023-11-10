@@ -122,7 +122,7 @@ async def main():
     with st.chat_message("system"):
         system_message = st.text_area(
             label="System message",
-            value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the user",
+            value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the user.",
             key="system_message",
             label_visibility="collapsed",
         )
@@ -187,8 +187,13 @@ async def main():
             label="Context message", value=context_message)
 
     tools = await get_tools(browser=st.session_state.browser)
+    # rewrite to tools
     functions = [format_tool_to_openai_function(t) for t in tools]
+    # functions = []
 
+    # for func in old_functions:
+    #      functions.append({"type": "function", "function": func})
+    
     # Rerun LLM with new parameters
     col1, col2 = st.columns(2)
     with col1:
@@ -227,13 +232,14 @@ async def main():
             function_call=function_call_option,
             system_messages=json.dumps([system_message]),
             context_messages=json.dumps([context_message])))
+        print(response)
         st.write(token_counter)
 
-        st.session_state.ai_message_content = response.content
-        function_call = response.additional_kwargs.get("function_call", None)
+        st.session_state.ai_message_content = response.choices[0].message.content
+        function_call = response.choices[0].message.function_call
         if function_call:
-            st.session_state.ai_message_function_name = function_call["name"]
-            st.session_state.ai_message_function_arguments = function_call["arguments"]
+            st.session_state.ai_message_function_name = function_call.name
+            st.session_state.ai_message_function_arguments = function_call.arguments
         else:
             st.session_state.ai_message_function_name = ""
             st.session_state.ai_message_function_arguments = ""
@@ -245,8 +251,7 @@ async def main():
                     "Content",
                     key="ai_message_content",
                 )
-                function_call = response.additional_kwargs.get(
-                    "function_call", {})
+                function_call = response.choices[0].message.function_call if not None else {}
                 st.text_input(
                     "Function call",
                     key="ai_message_function_name",

@@ -29,8 +29,8 @@ async def get_tools(browser) -> list:
 async def call_function(browser, json_function: dict):
     tools = await get_tools(browser)
     name_to_tool_map = {tool.name: tool for tool in tools}
-    tool = name_to_tool_map[json_function["name"]]
+    tool = name_to_tool_map[json_function.name]
     # arguments are string in dict format
-    function_arguments = ast.literal_eval(json_function["arguments"])
+    function_arguments = ast.literal_eval(json_function.arguments)
     function_response = await tool._arun(**function_arguments)
     return function_response

@@ -1,2 +1,2 @@
-llm_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4"]
+llm_models = ["gpt-3.5-turbo-1106", "gpt-4-1106-preview"]
 function_call_defaults = ["auto", "none"]
