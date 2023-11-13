@@ -1,6 +1,6 @@
 import json
 from langchain.chat_models import ChatOpenAI
-from openai import InvalidRequestError
+from openai import BadRequestError
 from components.logging_handler import LoggingHandler
 from langchain.schema.messages import (
     AIMessage,
@@ -92,7 +92,7 @@ class ProfiqDevAI:
             # TODO here needs to be a function to parse the response from the langchain world to our world.
             # self._convert_langchain_to_json(response)
             return response, token_counter
-        except InvalidRequestError as e:
+        except BadRequestError as e:
             # So the web_ui script doesnt crash
             return e._message
 

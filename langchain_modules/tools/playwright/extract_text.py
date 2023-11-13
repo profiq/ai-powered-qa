@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional, Type
 
-from pydantic import BaseModel, root_validator
+from pydantic.v1 import BaseModel, root_validator
 
 from langchain.callbacks.manager import AsyncCallbackManagerForToolRun, CallbackManagerForToolRun
 from langchain.tools.playwright.base import BaseBrowserTool
@@ -16,7 +16,7 @@ class ExtractTextTool(BaseBrowserTool):
     description: str = "Extract all the text on the current webpage"
     args_schema: Type[BaseModel] = BaseModel
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def check_acheck_bs_importrgs(cls, values: dict) -> dict:
         """Check that the arguments are valid."""
         try:
