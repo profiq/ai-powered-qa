@@ -1,0 +1,80 @@
+[
+    {
+        "role": "user",
+        "content": "Let's write a test for a chat app. We should test whether is possible to create new user group. Ask for URL. If you do not know any data or info, do not assume them, always ask user if you are not sure."
+    },
+    {
+        "role": "assistant",
+        "content": "Sure, let's start by navigating to the chat app. Could you please provide me with the URL of the chat app?",
+        "additional_kwargs": {}
+    },
+    {
+        "role": "user",
+        "content": "https://dev.app.serenityapp.com/sign-in\nemail: pmanak-kirk.4008391697028023@dispostable.com\npassword: Serenity!"
+    },
+    {
+        "role": "assistant",
+        "content": "",
+        "additional_kwargs": {
+            "function_call": {
+                "name": "navigate_browser",
+                "arguments": "{\n  \"url\": \"https://dev.app.serenityapp.com/sign-in\"\n}"
+            }
+        }
+    },
+    {
+        "role": "function",
+        "name": "navigate_browser",
+        "content": "Navigating to https://dev.app.serenityapp.com/sign-in returned status code 200"
+    },
+    {
+        "role": "assistant",
+        "content": "",
+        "additional_kwargs": {
+            "function_call": {
+                "name": "fill_element",
+                "arguments": "{\n  \"selector\": \"input[name='email']\",\n  \"text\": \"pmanak-kirk.4008391697028023@dispostable.com\"\n}"
+            }
+        }
+    },
+    {
+        "role": "function",
+        "name": "fill_element",
+        "content": "Text input on the element by text, input[name='email'] ,was successfully performed"
+    },
+    {
+        "role": "assistant",
+        "content": "",
+        "additional_kwargs": {
+            "function_call": {
+                "name": "fill_element",
+                "arguments": "{\n  \"selector\": \"input[name='password']\",\n  \"text\": \"Serenity!\"\n}"
+            }
+        }
+    },
+    {
+        "role": "function",
+        "name": "fill_element",
+        "content": "Text input on the element by text, input[name='password'] ,was successfully performed"
+    },
+    {
+        "role": "assistant",
+        "content": "",
+        "additional_kwargs": {
+            "function_call": {
+                "name": "click_element",
+                "arguments": "{\n  \"selector\": \"button[data-testid='SignInPage-submit']\"\n}"
+            }
+        }
+    },
+    {
+        "role": "function",
+        "name": "click_element",
+        "content": "Clicked element 'button[data-testid='SignInPage-submit']'"
+    },
+    {
+        "role": "assistant",
+        "content": "Great! We have successfully filled in the email and password fields. Now, let's click on the \"Sign In\" button to log in.",
+        "additional_kwargs": {}
+    }
+]

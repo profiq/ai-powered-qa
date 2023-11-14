@@ -68,10 +68,6 @@ def setup_llm(project_name, test_case):
         ))
 
 
-async def pre_fill(history):
-    await browse_by_json(playwright_instance=st.session_state.browser, messages=history)
-
-
 def get_prefill_options(project: str):
     options = ["None"]
     try:
@@ -111,7 +107,7 @@ async def main():
 
     if st.button(label="Pre-fill admin login"):
         loaded_conversation = load_conversation_history(f"projects/{project_name}/{prefill_box}")
-        await pre_fill(history=loaded_conversation)
+        await browse_by_json(playwright_instance=st.session_state.browser, messages=loaded_conversation)
         st.session_state.messages += loaded_conversation if loaded_conversation not in st.session_state.messages else []
 
     # Write conversation history
