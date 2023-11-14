@@ -1,18 +1,13 @@
-import asyncio
 import datetime
 import json
 import os
 
 import streamlit as st
-from dotenv import load_dotenv
-from langchain.tools.convert_to_openai import format_tool_to_openai_function
-from streamlit.errors import DuplicateWidgetID
-
-import components.context_message
-from components.constants import llm_models, function_call_defaults
-from components.function_caller import get_browser, get_tools, call_function
 
 from components.chat_model import ProfiqDevAIConfig, ChatCompletionInputs, ProfiqDevAI
+from components.constants import llm_models, function_call_defaults
+from components.function_caller import *
+
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -181,19 +176,12 @@ async def main():
                 st.stop()
 
     # Context message
-    context_message = await components.context_message.get_context_message(async_browser)
+    context_message = await get_context_message(browser=async_browser)
     with st.chat_message("system"):
-        context_message = st.text_area(
-            label="Context message", value=context_message)
+        context_message = st.text_area(label="Context message", value=context_message)
 
-    tools = await get_tools(browser=st.session_state.browser)
-    # rewrite to tools
-    functions = [format_tool_to_openai_function(t) for t in tools]
-    # functions = []
+    functions = get_function_list()
 
-    # for func in old_functions:
-    #      functions.append({"type": "function", "function": func})
-    
     # Rerun LLM with new parameters
     col1, col2 = st.columns(2)
     with col1:
@@ -232,7 +220,7 @@ async def main():
             function_call=function_call_option,
             system_messages=json.dumps([system_message]),
             context_messages=json.dumps([context_message])))
-        print(response)
+
         st.write(token_counter)
 
         st.session_state.ai_message_content = response.choices[0].message.content

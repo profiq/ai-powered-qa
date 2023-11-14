@@ -1,7 +1,9 @@
 import json
-import openai
-from components.logging_handler import LoggingHandler
 from dataclasses import dataclass
+
+import openai
+
+from components.logging_handler import LoggingHandler
 
 
 @dataclass
@@ -59,8 +61,7 @@ class ProfiqDevAI:
     def chat_completion(self, inputs: ChatCompletionInputs):
         """
         Chat completion. Pass inputs to the AI model and return the response."""
-        functions = json.loads(
-            inputs.functions)  # TODO: functions shouln't be a mandatory parameter, make it optional
+        functions = json.loads(inputs.functions)  # TODO: functions shouldn't be a mandatory parameter, make it optional
         prompt_messages = self._get_prompts(
             inputs.system_messages, inputs.conversation_history, inputs.context_messages)
         function_call = self._format_function_call(
@@ -76,15 +77,18 @@ class ProfiqDevAI:
             )
             token_usage = response.usage
             token_summary = f"Prompt tokens: {str(token_usage.prompt_tokens)}  \n" \
-                f"Completion tokens: {str(token_usage.completion_tokens)}  \n" \
-                f"Total tokens: {str(token_usage.total_tokens)} \n"
+                            f"Completion tokens: {str(token_usage.completion_tokens)}  \n" \
+                            f"Total tokens: {str(token_usage.total_tokens)} \n"
+            print(response)
             return response, token_summary
         except Exception as e:
-            # So the web_ui script doesnt crash
+            # So the web_ui script doesn't crash
             return e, -1
 
-    def _get_llm(self):
-        """Create an instance of the LLM. We create a new instance each time so that we can change the gpt_model during runtime"""
+    @staticmethod
+    def _get_llm():
+        """Create an instance of the LLM.
+           We create a new instance each time so that we can change the gpt_model during runtime"""
         return openai.OpenAI()
 
     def _setup_logging_handler(self):
@@ -127,7 +131,8 @@ class ProfiqDevAI:
             return {"name": function_call}
         return function_call
 
-    def _validate_function(self, function_call: str, functions: str):
+    @staticmethod
+    def _validate_function(function_call: str, functions: str):
         if function_call not in [function["name"] for function in functions]:
             raise ValueError(
                 f"Function {function_call} not in functions defined for the model.")
