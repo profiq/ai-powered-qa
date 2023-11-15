@@ -13,6 +13,22 @@ class Agent:
 
         self.model = model
 
+        self.plugins = [
+            PlaywrightAIPlugin(
+                system_message="Your are helping the user run a test case",
+                enabled_tools=["click_by_text", "navigate", ...],
+            )
+        ]
+
+        serialized_plugins = {
+            "system_message": "You are a helpful assistant.",
+            "plugins": {
+                "playwright": {
+                    "system_message": "Your are helping the user run a test case",
+                }
+            },
+        }
+
     @classmethod
     def load_from_file(cls, filename):
         """Loads the agent's state from a JSON file."""
@@ -53,3 +69,13 @@ class Agent:
 
     def append_message(self, message):
         self.conversation_history.append(message)
+
+
+# /agents
+# -- <agent_name>/agent_config.json
+# -- <agent_name>/conversations/<conversation_id>.json
+# -- <agent_name>/requests/<conversation_id|request_id>.json
+
+# Agent Name includes the timestamp of when it was created; when configuration changes, the timestamp should be updated, so that we version the agent config.
+# Conversation ID can the the timestamp when the conversation started. (When I load an older conversation, it get's a new ID, so as to not overwrite the old one.)
+# Request ID is the timestamp of when the request was made.
