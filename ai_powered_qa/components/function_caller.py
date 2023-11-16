@@ -4,7 +4,7 @@ import ast
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
-from langchain_modules.toolkit import PlayWrightBrowserToolkit
+from ai_powered_qa.langchain_modules.toolkit import PlayWrightBrowserToolkit
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)

@@ -3,7 +3,6 @@ from dataclasses import dataclass
 
 from langchain.chat_models import ChatOpenAI
 from openai import BadRequestError
-from components.logging_handler import LoggingHandler
 from langchain.schema.messages import (
     AIMessage,
     FunctionMessage,
@@ -11,7 +10,7 @@ from langchain.schema.messages import (
     SystemMessage,
 )
 
-from components.logging_handler import LoggingHandler
+from ai_powered_qa.components.logging_handler import LoggingHandler
 
 
 @dataclass

@@ -27,3 +27,5 @@ node_modules/
 /playwright/.cache/
 .env
 
+# PyCharm files
+.idea/

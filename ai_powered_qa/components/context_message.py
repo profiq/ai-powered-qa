@@ -1,5 +1,5 @@
-from components.utils import amark_invisible_elements, strip_html_to_structure
-from langchain_modules.tools.playwright.utils import aget_current_page
+from ai_powered_qa.components.utils import amark_invisible_elements, strip_html_to_structure
+from ai_powered_qa.langchain_modules.tools.playwright.utils import aget_current_page
 
 
 async def get_context_message(browser):

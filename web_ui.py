@@ -1,14 +1,27 @@
 import asyncio
+import json
+import os
 
 import streamlit as st
 from dotenv import load_dotenv
 from langchain.tools.convert_to_openai import format_tool_to_openai_function
 
-import components.context_message
-from components.chat_model import ProfiqDevAIConfig, ChatCompletionInputs, ProfiqDevAI
-from components.constants import llm_models, function_call_defaults
-from components.function_caller import get_browser, get_tools
-from components.json_utils import *
+from ai_powered_qa.components.chat_model import (
+    ProfiqDevAIConfig,
+    ChatCompletionInputs,
+    ProfiqDevAI,
+)
+from ai_powered_qa.components.constants import llm_models, function_call_defaults
+from ai_powered_qa.components.context_message import get_context_message
+from ai_powered_qa.components.function_caller import get_browser, get_tools
+from ai_powered_qa.components.json_utils import (
+    get_assistant_message,
+    get_function_message,
+    load_conversation_history,
+    browse_by_json,
+    save_conversation_history,
+    get_user_message,
+)
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
@@ -65,7 +78,8 @@ def setup_llm(project_name, test_case):
             project_name=project_name,
             test_case=test_case,
             x_last_messages=10,
-        ))
+        )
+    )
 
 
 def get_prefill_options(project: str):
@@ -95,20 +109,28 @@ async def main():
         system_message = st.text_area(
             label="System message",
             value="You are a QA engineer controlling a browser. "
-                  "Your goal is to plan and go through a test scenario with the user",
+            "Your goal is to plan and go through a test scenario with the user",
             key="system_message",
             label_visibility="collapsed",
         )
 
     # Prefill
     prefill_box = st.selectbox(
-        label="Project pre-fill options",
-        options=get_prefill_options(project_name))
+        label="Project pre-fill options", options=get_prefill_options(project_name)
+    )
 
     if st.button(label="Pre-fill admin login"):
-        loaded_conversation = load_conversation_history(f"projects/{project_name}/{prefill_box}")
-        await browse_by_json(playwright_instance=st.session_state.browser, messages=loaded_conversation)
-        st.session_state.messages += loaded_conversation if loaded_conversation not in st.session_state.messages else []
+        loaded_conversation = load_conversation_history(
+            f"projects/{project_name}/{prefill_box}"
+        )
+        await browse_by_json(
+            playwright_instance=st.session_state.browser, messages=loaded_conversation
+        )
+        st.session_state.messages += (
+            loaded_conversation
+            if loaded_conversation not in st.session_state.messages
+            else []
+        )
 
     # Write conversation history
     for key, message in enumerate(st.session_state.messages):
@@ -122,18 +144,24 @@ async def main():
             with st.chat_message("assistant"):
                 if message["content"]:
                     message["content"] = st.text_area(
-                        label="Assistant Message", value=message["content"], key=f"assistant_{key}")
-                function_call = message["additional_kwargs"].get(
-                    "function_call", None)
+                        label="Assistant Message",
+                        value=message["content"],
+                        key=f"assistant_{key}",
+                    )
+                function_call = message["additional_kwargs"].get("function_call", None)
                 if function_call:
                     with st.status(function_call["name"], state="complete"):
-                        st.text_area(label="function_call",
-                                     value=function_call["arguments"],
-                                     label_visibility="collapsed", key=f"function_call_{key}")
+                        st.text_area(
+                            label="function_call",
+                            value=function_call["arguments"],
+                            label_visibility="collapsed",
+                            key=f"function_call_{key}",
+                        )
         elif message["role"] == "user":
             with st.chat_message("user"):
                 message["content"] = st.text_area(
-                    label="User Message", value=message["content"], key=f"user_{key}")
+                    label="User Message", value=message["content"], key=f"user_{key}"
+                )
 
     # Check last message
     last_message = None
@@ -160,10 +188,9 @@ async def main():
                 st.stop()
 
     # Context message
-    context_message = await components.context_message.get_context_message(async_browser)
+    context_message = await get_context_message(async_browser)
     with st.chat_message("system"):
-        context_message = st.text_area(
-            label="Context message", value=context_message)
+        context_message = st.text_area(label="Context message", value=context_message)
 
     tools = await get_tools(browser=st.session_state.browser)
     functions = [format_tool_to_openai_function(t) for t in tools]
@@ -175,7 +202,7 @@ async def main():
             "Force function call?",
             get_function_call_options(functions),
             help="'auto' leaves the decision to the model, "
-                 "'none' forces a generated message, or choose a specific function.",
+            "'none' forces a generated message, or choose a specific function.",
             index=0,
             key="function_call_option",
         )
@@ -197,19 +224,24 @@ async def main():
     )
 
     # auto-save before llm part
-    save_conversation_history(project_name, test_case, st.session_state.messages, autosave=True)
+    save_conversation_history(
+        project_name, test_case, st.session_state.messages, autosave=True
+    )
 
     llm = setup_llm(project_name, test_case)
 
     # Call LLM
     try:
-        response, token_counter = llm.chat_completion(ChatCompletionInputs(
-            gpt_model=gpt_model,
-            conversation_history=json.dumps(st.session_state.messages),
-            functions=json.dumps(functions),
-            function_call=function_call_option,
-            system_messages=json.dumps([system_message]),
-            context_messages=json.dumps([context_message])))
+        response, token_counter = llm.chat_completion(
+            ChatCompletionInputs(
+                gpt_model=gpt_model,
+                conversation_history=json.dumps(st.session_state.messages),
+                functions=json.dumps(functions),
+                function_call=function_call_option,
+                system_messages=json.dumps([system_message]),
+                context_messages=json.dumps([context_message]),
+            )
+        )
         st.write(token_counter)
 
         st.session_state.ai_message_content = response.content

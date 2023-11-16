@@ -2,7 +2,7 @@ import datetime
 import json
 import os
 
-from components.function_caller import call_function
+from ai_powered_qa.components.function_caller import call_function
 
 
 def save_conversation_history(project_name: str, test_case: str, messages: list, autosave: bool = False):
