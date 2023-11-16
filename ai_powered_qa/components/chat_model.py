@@ -2,13 +2,13 @@ import json
 from dataclasses import dataclass
 
 from langchain.chat_models import ChatOpenAI
-from openai import BadRequestError
 from langchain.schema.messages import (
     AIMessage,
     FunctionMessage,
     HumanMessage,
     SystemMessage,
 )
+from openai import BadRequestError
 
 from ai_powered_qa.components.logging_handler import LoggingHandler
 
