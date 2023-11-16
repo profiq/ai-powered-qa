@@ -139,13 +139,7 @@ async def main():
             if loaded_conversation not in st.session_state.messages
             else []
         )
-        label="Project pre-fill options",
         options=get_prefill_options(project_name)
-
-    if st.button(label="Pre-fill admin login"):
-        loaded_conversation = load_conversation_history(f"projects/{project_name}/{prefill_box}")
-        await browse_by_json(playwright_instance=st.session_state.browser, messages=loaded_conversation)
-        st.session_state.messages += loaded_conversation if loaded_conversation not in st.session_state.messages else []
 
     # Write conversation history
     for key, message in enumerate(st.session_state.messages):
