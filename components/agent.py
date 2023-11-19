@@ -1,74 +1,160 @@
+import os
 import json
+import random
+import string
+import datetime
+from glob import glob
+from typing import Any, List
+from pydantic import BaseModel, Field
 from openai import OpenAI
+from .utils import md5
 
 
-class Agent:
-    def __init__(
-        self, system_message="You are a helpful assistant.", model="gpt-3.5-turbo-1106"
-    ):
-        self.client = OpenAI()
+def generate_short_id():
+    characters = string.ascii_letters + string.digits
+    return "".join(random.choice(characters) for _ in range(6))
 
-        self.system_message = system_message
-        self.conversation_history = []
 
-        self.model = model
+class Agent(BaseModel, validate_assignment=True, extra="ignore"):
+    client: Any = Field(default_factory=OpenAI, exclude=True)
+    base_path: str = Field(default="./agents", exclude=True)
+    agent_name: str
+    version: int = 0
+    hash: str = ""
+    system_message: str = Field(default="You are a helpful assistant.")
 
-        self.plugins = [
-            PlaywrightAIPlugin(
-                system_message="Your are helping the user run a test case",
-                enabled_tools=["click_by_text", "navigate", ...],
-            )
-        ]
+    history_id: str = Field(default_factory=generate_short_id, exclude=True)
+    # TODO: type correctly
+    history: List[Any] = Field(default=[], exclude=True)
 
-        serialized_plugins = {
-            "system_message": "You are a helpful assistant.",
-            "plugins": {
-                "playwright": {
-                    "system_message": "Your are helping the user run a test case",
-                }
-            },
-        }
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.hash = self._compute_hash()
+
+    def _compute_hash(self):
+        return md5(self.model_dump_json(exclude=["hash", "version"]))
+
+    def __setattr__(self, name, value):
+        """Override the default __setattr__ method to update the hash and version when the agent's configuration changes."""
+        super().__setattr__(name, value)
+        new_hash = self._compute_hash()
+        if name not in ["hash", "version"] and self.hash != new_hash:
+            self.version += 1
+            self.hash = new_hash
+
+    @staticmethod
+    def _find_latest_version_static(agent_name, base_path):
+        """Static method to find the latest version number of the configuration files."""
+        config_files = glob(f"{base_path}/{agent_name}/agent_config_v*.json")
+        if not config_files:
+            return 0
+
+        latest_version = max(
+            int(f.split("_v")[-1].split(".json")[0]) for f in config_files
+        )
+        return latest_version
 
     @classmethod
-    def load_from_file(cls, filename):
+    def load_from_file(cls, agent_name, base_path="./agents", version=None):
         """Loads the agent's state from a JSON file."""
-        with open(filename) as f:
-            data = json.load(f)
-        return cls(system_message=data["system_message"], model=data["model"])
 
-    def save_to_file(self, filename):
-        """Saves the agent's state to a JSON file."""
-        agent_state = {"system_message": self.system_message, "model": self.model}
-        with open(filename, "w") as f:
-            json.dump(agent_state, f)
+        if version is None:
+            # Find the latest version if not specified
+            version = cls._find_latest_version_static(agent_name, base_path)
 
-    def load_conversation_history(self, filename):
-        """Loads the agent's conversation history from a JSON file."""
-        with open(filename) as f:
-            self.conversation_history = json.load(f)
+        file_name = f"agent_config_v{version}.json"
+        file_path = os.path.join(base_path, agent_name, file_name)
 
-    def save_conversation_history(self, filename):
-        """Saves the agent's conversation history to a JSON file."""
-        with open(filename, "w") as f:
-            json.dump(self.conversation_history, f)
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Configuration file {file_name} not found.")
+
+        with open(file_path, "r") as file:
+            config_data = json.load(file)
+
+        return cls(**config_data)
+
+    def save_config(self):
+        """Saves the agent's config to a JSON file."""
+        file_name = f"agent_config_v{self.version}.json"
+        dir_path = os.path.join(self.base_path, self.agent_name)
+        file_path = os.path.join(dir_path, file_name)
+
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        with open(file_path, "w") as file:
+            file.write(self.model_dump_json(indent=4))
+
+        return file_path
+
+    def load_history(self, filename):
+        """Loads the agent's history from a JSON file."""
+        file_path = os.path.join(self.base_path, self.agent_name, "histories", filename)
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"History file {filename} not found.")
+
+        with open(file_path, "r") as file:
+            self.history = json.load(file)
+            self.history_id = generate_short_id()
+
+    def save_history(self, history_name="noname"):
+        """Saves the agent's history to a JSON file."""
+        file_name = f"{self.history_id}_{history_name}.json"
+        dir_path = os.path.join(self.base_path, self.agent_name, "histories")
+        file_path = os.path.join(dir_path, file_name)
+
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        with open(file_path, "w") as file:
+            json.dump(self.history, file, indent=4)
+
+        return file_path
+
+    def clear_history(self):
+        self.history_id = generate_short_id()
+        self.history = []
 
     def get_completion(
         self, user_prompt, model="gpt-3.5-turbo-1106", function_call_option=None
     ):
-        print(self.conversation_history)
-        chat_completion = self.client.chat.completions.create(
-            messages=[
+        request_params = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": self.system_message},
-                *self.conversation_history,
-                user_prompt,
+                *self.history,
+                {"role": "user", "content": user_prompt},
             ],
-            model=model or self.model,
-        )
+        }
 
-        return chat_completion.choices[0].message.model_dump()
+        chat_completion = self.client.chat.completions.create(**request_params)
+
+        completion = chat_completion.choices[0].message.model_dump(exclude_none=True)
+
+        self.save_request(request_params, completion)
+
+        return completion
+
+    def save_request(self, request_params, completion):
+        """Saves the request to a JSON file."""
+        current_datetime = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        file_name = f"{self.history_id}_{current_datetime}_{self.version}.json"
+        dir_path = os.path.join(self.base_path, self.agent_name, "requests")
+        file_path = os.path.join(dir_path, file_name)
+
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+
+        with open(file_path, "w") as file:
+            json.dump(
+                {"request": request_params, "response": completion}, file, indent=4
+            )
+
+        return file_path
 
     def append_message(self, message):
-        self.conversation_history.append(message)
+        self.history.append(message)
 
 
 # /agents

@@ -1,3 +1,4 @@
+import hashlib
 from bs4 import BeautifulSoup, Tag
 
 
@@ -66,17 +67,44 @@ def mark_invisible_elements(page):
 
 def clean_attributes(tag):
     # List of attributes to remove, add or remove attributes as needed
-    blocked_attrs = ["class", "style", "jsaction", "jscontroller", "data-p", "jsrenderer", "c-wiz", "jsmodel", "data-idom-class",
-                     "jsshadow", "jsslot", "dir", "aria-hidden", "aria-haspopup", "aria-expanded", "aria-atomic",
-                     "aria-live", "aria-relevant", "aria-disabled", "aria-labelledby", "aria-describedby",
-                     "aria-controls"]
+    blocked_attrs = [
+        "class",
+        "style",
+        "jsaction",
+        "jscontroller",
+        "data-p",
+        "jsrenderer",
+        "c-wiz",
+        "jsmodel",
+        "data-idom-class",
+        "jsshadow",
+        "jsslot",
+        "dir",
+        "aria-hidden",
+        "aria-haspopup",
+        "aria-expanded",
+        "aria-atomic",
+        "aria-live",
+        "aria-relevant",
+        "aria-disabled",
+        "aria-labelledby",
+        "aria-describedby",
+        "aria-controls",
+    ]
     tag.attrs = {k: v for k, v in tag.attrs.items() if k not in blocked_attrs}
 
 
 def remove_specific_tags(soup):
     # List of tags to remove
-    tags_to_remove = ["path", "meta", "link",
-                      "noscript", "script", "style", "title", ]
+    tags_to_remove = [
+        "path",
+        "meta",
+        "link",
+        "noscript",
+        "script",
+        "style",
+        "title",
+    ]
     for t in soup.find_all(tags_to_remove):
         t.decompose()
 
@@ -99,7 +127,10 @@ def remove_nonrelevant_tags(soup):
     for tag in soup.find_all(lambda tag: not tag.contents and not tag.attrs):
         tag.decompose()
     for tag in soup.find_all(
-            lambda tag: len(tag.contents) == 1 and not tag.attrs and not tag.name in ['body', 'br', 'p', 'head', 'html']):
+        lambda tag: len(tag.contents) == 1
+        and not tag.attrs
+        and not tag.name in ["body", "br", "p", "head", "html"]
+    ):
         # if tag has only one child
         tag.unwrap()
 
@@ -112,3 +143,8 @@ def strip_html_to_structure(html_content):
     remove_nonrelevant_tags(soup)
 
     return str(soup)
+
+
+def md5(input_string: str) -> str:
+    """Generate an MD5 hash for a given input string."""
+    return hashlib.md5(input_string.encode()).hexdigest()

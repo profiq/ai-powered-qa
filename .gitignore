@@ -25,3 +25,6 @@ node_modules/
 /playwright-report/
 /playwright/.cache/
 .env
+
+# ignore agent config
+agents
