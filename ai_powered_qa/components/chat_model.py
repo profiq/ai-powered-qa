@@ -8,9 +8,9 @@ from langchain.schema.messages import (
     HumanMessage,
     SystemMessage,
 )
-from openai import InvalidRequestError
+from openai import BadRequestError
 
-from components.logging_handler import LoggingHandler
+from ai_powered_qa.components.logging_handler import LoggingHandler
 
 
 @dataclass
@@ -91,7 +91,8 @@ class ProfiqDevAI:
             # TODO here needs to be a function to parse the response from the langchain world to our world.
             # response = self._convert_langchain_to_json(response)
             return response, token_counter
-        except InvalidRequestError as e:    # So the web_ui script doesn't crash
+        except BadRequestError as e:
+            # So the web_ui script doesnt crash
             return e._message
 
     def _get_llm(self, gpt_model: str):
