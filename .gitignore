@@ -27,5 +27,6 @@ node_modules/
 /playwright/.cache/
 .env
 
-# PyCharm files
+# IDE specific folders
 .idea/
+.vim/
