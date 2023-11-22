@@ -16,7 +16,7 @@ openai_request_logs/
 __pycache__
 .venv
 .pytest_cache
-test*.py
+# test*.py
 projects/
 
 # ignore playwright stuff
