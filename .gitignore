@@ -17,6 +17,7 @@ __pycache__
 .venv
 .pytest_cache
 test*.py
+projects/
 
 # ignore playwright stuff
 playwright.config.ts
@@ -30,3 +31,4 @@ node_modules/
 # IDE specific folders
 .idea/
 .vim/
+
