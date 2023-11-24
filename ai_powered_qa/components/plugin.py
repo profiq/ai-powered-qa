@@ -2,6 +2,7 @@ from abc import ABC
 import inspect
 import random
 import json
+import playwright.sync_api
 
 import docstring_parser
 
@@ -118,3 +119,28 @@ class RandomNumberPlugin(Plugin):
         }
         """
         return random.normalvariate(mean, standard_deviation)
+
+
+class PlaywrightPlugin(Plugin):
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._playwright = playwright.sync_api.sync_playwright().start()
+        self._browser = self._playwright.chromium.launch()
+        self._page = self._browser.new_page()
+
+    @tool
+    def navigate_to_url(self, url: str) :
+        """
+        Navigates to a URL
+
+        :param str url: The URL to navigate to
+        """
+        self._page.goto(url)
+        return 'OK'
+    
+
+    def __del__(self):
+        self._page.close()
+        self._browser.close()
+        self._playwright.stop()
