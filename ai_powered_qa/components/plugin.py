@@ -1,10 +1,10 @@
 from abc import ABC
 import inspect
-import random
 import json
-import playwright.sync_api
+import random
 
 import docstring_parser
+import playwright.sync_api
 
 
 def tool(method):

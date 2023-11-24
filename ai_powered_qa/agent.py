@@ -5,6 +5,13 @@ import random
 import json
 
 
+class AgentStore:
+    def __init__(self, directory: str):
+        self._directory = directory
+
+    def store_agent(self, agent: Agent):
+        pass
+
 class Agent:
     def __init__(
         self, system_message="You are a helpful assistant.", model="gpt-3.5-turbo-1106"
