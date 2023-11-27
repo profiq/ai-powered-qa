@@ -5,9 +5,8 @@ import shutil
 
 import openai
 
-from langchain_modules.toolkit import PlayWrightBrowserToolkit
-from langchain_modules.tools import *
-from langchain_modules.tools.playwright.utils import create_async_playwright_browser
+from ai_powered_qa.langchain_modules.toolkit import PlayWrightBrowserToolkit
+from ai_powered_qa.langchain_modules.tools.playwright.utils import create_async_playwright_browser
 
 # Things to improve:
 

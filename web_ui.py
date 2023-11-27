@@ -1,12 +1,19 @@
-import datetime
 import json
 import os
 
 import streamlit as st
 
-from components.chat_model import ProfiqDevAIConfig, ChatCompletionInputs, ProfiqDevAI
-from components.constants import llm_models, function_call_defaults
-from components.function_caller import *
+from ai_powered_qa.components.chat_model import ProfiqDevAIConfig, ProfiqDevAI, ChatCompletionInputs
+from ai_powered_qa.components.constants import llm_models, function_call_defaults
+from ai_powered_qa.components.function_caller import *
+from ai_powered_qa.components.json_utils import (
+    get_assistant_message,
+    get_function_message,
+    load_conversation_history,
+    browse_by_json,
+    save_conversation_history,
+    get_user_message,
+)
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
@@ -29,31 +36,10 @@ if "ai_message_function_arguments" not in st.session_state:
     st.session_state.ai_message_function_arguments = ""
 
 
-async def on_submit(response):
-    st.session_state.messages.append(
-        {
-            "role": "assistant",
-            "content": st.session_state.ai_message_content,
-            "additional_kwargs": {
-                "function_call": {
-                    "name": st.session_state.ai_message_function_name,
-                    "arguments": st.session_state.ai_message_function_arguments,
-                }
-            }
-            if st.session_state.ai_message_function_name
-            else {},
-        }
-    )
+async def on_submit(function_call):
+    st.session_state.messages.append(get_assistant_message(st))
     if st.session_state.ai_message_function_name:
-        function_response = await call_function(browser=st.session_state.browser, json_function=response)
-
-        st.session_state.messages.append(
-            {
-                "role": "function",
-                "name": st.session_state.ai_message_function_name,
-                "content": function_response,
-            }
-        )
+        st.session_state.messages.append(await get_function_message(st, function_call))
 
     st.session_state.user_message_content = ""
     st.session_state.ai_message_content = ""
@@ -61,24 +47,12 @@ async def on_submit(response):
     st.session_state.ai_message_function_arguments = ""
 
 
-def run_on_submit(response):
+def run_on_submit(function_call):
     # reset the options, unpredictable behaviour otherwise
     st.session_state.function_call_option = function_call_defaults[0]
     st.session_state.gpt_model = llm_models[0]
     asyncio.set_event_loop(st.session_state.loop)
-    return st.session_state.loop.run_until_complete(on_submit(response))
-
-
-def save_conversation_history(project_name: str, test_case: str):
-    path = f"conversation_history/{project_name}/{test_case}"
-    start_time = datetime.datetime.now().strftime("%Y_%m_%d-%H:%M:%S")
-    file_path = os.path.join(path, f"{test_case}_history_{start_time}.json")
-
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-    with open(file_path, "w") as f:
-        f.write(json.dumps(st.session_state.messages, indent=4))
+    return st.session_state.loop.run_until_complete(on_submit(function_call))
 
 
 @st.cache_data
@@ -96,7 +70,16 @@ def setup_llm(project_name, test_case):
             project_name=project_name,
             test_case=test_case,
             x_last_messages=10,
-        ))
+        )
+    )
+
+
+def get_prefill_options(project: str):
+    options = ["None"]
+    try:
+        return options + os.listdir(f"projects/{project}/")
+    except FileNotFoundError:
+        return options
 
 
 async def main():
@@ -117,10 +100,30 @@ async def main():
     with st.chat_message("system"):
         system_message = st.text_area(
             label="System message",
-            value="You are a QA engineer controlling a browser. Your goal is to plan and go through a test scenario with the user.",
+            value="You are a QA engineer controlling a browser. "
+            "Your goal is to plan and go through a test scenario with the user",
             key="system_message",
             label_visibility="collapsed",
         )
+
+    # Prefill
+    prefill_box = st.selectbox(
+        label="Project pre-fill options", options=get_prefill_options(project_name)
+    )
+
+    if st.button(label="Pre-fill admin login"):
+        loaded_conversation = load_conversation_history(
+            f"projects/{project_name}/{prefill_box}"
+        )
+        await browse_by_json(
+            playwright_instance=st.session_state.browser, messages=loaded_conversation
+        )
+        st.session_state.messages += (
+            loaded_conversation
+            if loaded_conversation not in st.session_state.messages
+            else []
+        )
+        options=get_prefill_options(project_name)
 
     # Write conversation history
     for key, message in enumerate(st.session_state.messages):
@@ -134,18 +137,24 @@ async def main():
             with st.chat_message("assistant"):
                 if message["content"]:
                     message["content"] = st.text_area(
-                        label="Assistant Message", value=message["content"], key=f"assistant_{key}")
-                function_call = message["additional_kwargs"].get(
-                    "function_call", None)
+                        label="Assistant Message",
+                        value=message["content"],
+                        key=f"assistant_{key}",
+                    )
+                function_call = message["additional_kwargs"].get("function_call", None)
                 if function_call:
                     with st.status(function_call["name"], state="complete"):
-                        st.text_area(label="function_call",
-                                     value=function_call["arguments"],
-                                     label_visibility="collapsed", key=f"function_call_{key}")
+                        st.text_area(
+                            label="function_call",
+                            value=function_call["arguments"],
+                            label_visibility="collapsed",
+                            key=f"function_call_{key}",
+                        )
         elif message["role"] == "user":
             with st.chat_message("user"):
                 message["content"] = st.text_area(
-                    label="User Message", value=message["content"], key=f"user_{key}")
+                    label="User Message", value=message["content"], key=f"user_{key}"
+                )
 
     # Check last message
     last_message = None
@@ -157,7 +166,7 @@ async def main():
         st.button(
             "Save conversation history",
             on_click=save_conversation_history,
-            args=(project_name, test_case),
+            args=(project_name, test_case, st.session_state.messages),
         )
         with st.chat_message("user"):
             user_message_content = st.text_area(
@@ -167,16 +176,13 @@ async def main():
             )
             if user_message_content:
                 # append the user message instantly to the conversation
-                last_message = {
-                    "role": "user",
-                    "content": st.session_state.user_message_content,
-                }
-                st.session_state.messages.append(last_message)
+                st.session_state.messages.append(get_user_message(st))
             else:
                 st.stop()
 
     # Context message
     context_message = await get_context_message(browser=async_browser)
+
     with st.chat_message("system"):
         context_message = st.text_area(label="Context message", value=context_message)
 
@@ -188,8 +194,8 @@ async def main():
         function_call_option = st.selectbox(
             "Force function call?",
             get_function_call_options(functions),
-            help="'auto' leaves the decision to the model,"
-                 " 'none' forces a generated message, or choose a specific function.",
+            help="'auto' leaves the decision to the model, "
+            "'none' forces a generated message, or choose a specific function.",
             index=0,
             key="function_call_option",
         )
@@ -210,16 +216,25 @@ async def main():
         ".",
     )
 
+    # auto-save before llm part
+    save_conversation_history(
+        project_name, test_case, st.session_state.messages, autosave=True
+    )
+
     llm = setup_llm(project_name, test_case)
+
     # Call LLM
     try:
-        response, token_counter = llm.chat_completion(ChatCompletionInputs(
-            gpt_model=gpt_model,
-            conversation_history=json.dumps(st.session_state.messages),
-            functions=json.dumps(functions),
-            function_call=function_call_option,
-            system_messages=json.dumps([system_message]),
-            context_messages=json.dumps([context_message])))
+        response, token_counter = llm.chat_completion(
+            ChatCompletionInputs(
+                gpt_model=gpt_model,
+                conversation_history=json.dumps(st.session_state.messages),
+                functions=json.dumps(functions),
+                function_call=function_call_option,
+                system_messages=json.dumps([system_message]),
+                context_messages=json.dumps([context_message]),
+            )
+        )
 
         st.write(token_counter)
 

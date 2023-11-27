@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import openai
 
-from components.logging_handler import LoggingHandler
+from ai_powered_qa.components.logging_handler import LoggingHandler
 
 
 @dataclass
@@ -35,9 +35,9 @@ class ChatCompletionInputs:
     `context_messages`: JSON string representing a list of context messages.
 
     system_messages and context_messages are effectively the same for the AI model. The difference is that \
-    system_messages are prepended at the beggining of conversation history, while context_messages are appended \
+    system_messages are prepended at the beginning of conversation history, while context_messages are appended \
     at the end of conversation history. The best approach is to use system_messages for defining the AI behavior \
-    and context_messages for adding context (e. g. HTML, description of web page)."""
+    and context_messages for adding context (e.g. HTML, description of web page)."""
     gpt_model: str
     conversation_history: str
     functions: str
@@ -62,11 +62,9 @@ class ProfiqDevAI:
         """
         Chat completion. Pass inputs to the AI model and return the response."""
         functions = json.loads(inputs.functions)  # TODO: functions shouldn't be a mandatory parameter, make it optional
-        prompt_messages = self._get_prompts(
-            inputs.system_messages, inputs.conversation_history, inputs.context_messages)
-        function_call = self._format_function_call(
-            inputs.function_call, functions)
-        
+        prompt_messages = self._get_prompts(inputs.system_messages, inputs.conversation_history, inputs.context_messages)
+        function_call = self._format_function_call(inputs.function_call, functions)
+
         try:
             response = self.llm.chat.completions.create(
                 model=inputs.gpt_model,
@@ -136,3 +134,20 @@ class ProfiqDevAI:
         if function_call not in [function["name"] for function in functions]:
             raise ValueError(
                 f"Function {function_call} not in functions defined for the model.")
+
+    @staticmethod
+    def _convert_langchain_to_json(response):
+        # Following the openAI API
+        # https://platform.openai.com/docs/api-reference/chat/object or just leave it as langchain api?
+        json_response = {"choices": [
+                            {"message": {
+                                "content": response.content if response.content else None,
+                                "role": "assistant",
+                            }}
+                        ]}
+        # We only do 1 response. If that changes, this needs to be changed.
+        function_call = response.additional_kwargs.get("function_call", None)
+        if function_call:
+            json_response["choices"][0]["message"]["function_call"] = function_call
+
+        return json.dumps(json_response)

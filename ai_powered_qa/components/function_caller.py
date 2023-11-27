@@ -4,8 +4,9 @@ import asyncio
 from dotenv import load_dotenv
 from playwright.async_api import Browser, async_playwright
 
-from components.playwright_functions import *
-from components.utils import amark_invisible_elements, strip_html_to_structure
+from ai_powered_qa.components.playwright_functions import *
+from ai_powered_qa.components.utils import amark_invisible_elements, strip_html_to_structure
+
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
@@ -20,7 +21,7 @@ async def get_browser() -> Browser:
 
 async def call_function(browser, json_function):
     available_functions = {tool.name: tool for tool in [NavigateFunction, ClickFunction, FillFunction]}
-    print(json_function)
+    print(f'JSON FUNCTION: {json_function}')
     function_to_call = available_functions[json_function.name]
     function_arguments = ast.literal_eval(json_function.arguments)
     function_response = await function_to_call(page=await get_current_page(browser), **function_arguments).arun()

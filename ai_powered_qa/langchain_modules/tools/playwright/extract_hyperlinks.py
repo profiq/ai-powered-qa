@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any, Optional, Type
 
-from pydantic import BaseModel, Field, root_validator
+from pydantic.v1 import BaseModel, Field, root_validator
 
 from langchain.callbacks.manager import (
     AsyncCallbackManagerForToolRun,
@@ -32,7 +32,7 @@ class ExtractHyperlinksTool(BaseBrowserTool):
     description: str = "Extract all hyperlinks on the current webpage"
     args_schema: Type[BaseModel] = ExtractHyperlinksToolInput
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def check_bs_import(cls, values: dict) -> dict:
         """Check that the arguments are valid."""
         try:
