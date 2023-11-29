@@ -21,9 +21,12 @@ class Plugin(ABC):
         "bool": "boolean",
     }
 
+    name: str
+
     def __init__(self, system_message: str = ""):
         self._system_message = system_message
-        self._tools = []
+        self._tools = []  # tools passed to openai API
+        self._callable_tools = {}  # dict of "tool_name" : method that agent can call
         self._register_tools()
 
     @property
@@ -48,13 +51,18 @@ class Plugin(ABC):
         self, tool_name: str, description: str, argument: str | None = None
     ):
         for tool in self._tools:
-            if tool[0]["name"] == tool_name:
-                tool_params = tool[0]["parameters"]["properties"]
+            if tool["function"]["name"] == tool_name:
+                tool_params = tool["function"]["parameters"]["properties"]
                 if argument is not None and argument in tool_params:
                     tool_params[argument]["description"] = description
                 else:
-                    tool[0]["description"] = description
+                    tool["function"]["description"] = description
                 break
+
+    def call_tool(self, tool_name: str, **kwargs):
+        if tool_name not in self._callable_tools:
+            return None
+        return self._callable_tools[tool_name](**kwargs)
 
     def _register_tools(self):
         for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
@@ -65,16 +73,21 @@ class Plugin(ABC):
                 else:
                     docstring_parsed = docstring_parser.parse(docstring)
                     tool_description = {
-                        "name": f"{self.__class__.__name__}_{name}",
-                        "description": docstring_parsed.short_description,
-                        "parameters": {
-                            "type": "object",
-                            "properties": self._build_param_object(
-                                docstring_parsed.params
-                            ),
+                        "type": "function",
+                        "function": {
+                            "name": f"{name}",
+                            "description": docstring_parsed.short_description,
+                            "parameters": {
+                                "type": "object",
+                                "properties": self._build_param_object(
+                                    docstring_parsed.params
+                                ),
+                            },
                         },
                     }
-                self._tools.append((tool_description, method))
+                self._tools.append(tool_description)
+                self._callable_tools[tool_description["function"]
+                                     ["name"]] = method
 
     def _build_param_object(self, params):
         param_object = {}
@@ -101,18 +114,21 @@ class RandomNumberPlugin(Plugin):
     def get_random_normal(self, mean: float = 0, standard_deviation: float = 1):
         """
         {
-            "name": "RandomNumberPlugin_get_random_normal",
-            "description": "Returns a random number from a normal distribution",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "mean": {
-                        "type": "number",
-                        "description": "The mean of the normal distribution"
-                    },
-                    "standard_deviation": {
-                        "type": "number",
-                        "description": "The standard deviation of the normal distribution"
+            "type": "function",
+            "function": {
+                "name": "get_random_normal",
+                "description": "Returns a random number from a normal distribution",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "mean": {
+                            "type": "number",
+                            "description": "The mean of the normal distribution"
+                        },
+                        "standard_deviation": {
+                            "type": "number",
+                            "description": "The standard deviation of the normal distribution"
+                        }
                     }
                 }
             }
@@ -122,7 +138,8 @@ class RandomNumberPlugin(Plugin):
 
 
 class PlaywrightPlugin(Plugin):
-    
+    name: str = "PlaywrightPlugin"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._playwright = playwright.sync_api.sync_playwright().start()
@@ -130,19 +147,82 @@ class PlaywrightPlugin(Plugin):
         self._page = self._browser.new_page()
 
     @tool
-    def navigate_to_url(self, url: str) :
+    def navigate_to_url(self, url: str):
         """
         Navigates to a URL
 
-        :param str url: The URL to navigate to
+        :param str url: The URL to navigate to.
         """
-        self._page.goto(url)
-        return 'OK'
+        self._page = self.get_current_page(self._browser)
+        try:
+            response = self._page.goto(url)
+        except Exception:
+            return f"Unable to navigate to {url}"
 
-    @property
-    def playwright(self):
-        return self._playwright
-    
+        return f"Navigating to {url} returned status code {response.status if response else 'unknown'}"
 
-    def __del__(self):
-        self._playwright.stop()
+    @tool
+    def click_element(self, selector: str, index: int = 0, timeout: int = 3_000) -> str:
+        """
+        Click on an element with the given CSS selector
+
+        :param str selector: CSS selector for the element to click
+        :param int index: Index of the element to click
+        :param int timeout: Timeout for Playwright to wait for element to be ready.
+        """
+
+        visible_only: bool = True
+
+        def _selector_effective(selector: str, index: int) -> str:
+            if not visible_only:
+                return selector
+            return f"{selector} >> visible=1 >> nth={index}"
+
+        playwright_strict: bool = False
+        page = self.get_current_page(self._browser)
+        try:
+            page.click(selector=_selector_effective(selector, index),
+                       strict=playwright_strict,
+                       timeout=timeout)
+        except TimeoutError:
+            return f"Unable to click on element '{selector}'"
+
+        return f"Clicked element '{selector}'"
+
+    @tool
+    def fill_element(self, selector: str, text: str, timeout: int = 3000):
+        """
+        Text input on element in the current web page matching the text content
+
+        :param str selector: Selector for the element by text content.
+        :param str text: Text what you want to fill up.
+        :param int timeout: Timeout for Playwright to wait for element to be ready.
+        """
+
+        page = self.get_current_page(self._browser)
+        try:
+            page.locator(selector).fill(text, timeout=timeout)
+        except Exception:
+            return f"Unable to fill up text on element '{selector}'."
+        return f"Text input on the element by text, {selector}, was successfully performed."
+
+    @staticmethod
+    def get_current_page(browser: playwright.sync_api.Browser) -> playwright.sync_api.Page:
+        if not browser.contexts:
+            raise Exception("No browser contexts found")
+        # Get the first browser context
+        context = browser.contexts[0]
+        if not context.pages:
+            raise Exception("No pages found in the browser context")
+        # Get the last page in the context (assuming the last one is the active one)
+        page = context.pages[-1]
+
+        return page
+
+    def close(self):
+        if self._page:
+            self._page.close()
+        if self._browser:
+            self._browser.close()
+        if self._playwright:
+            self._playwright.stop()
