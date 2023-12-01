@@ -2,7 +2,7 @@
 screenshot
 
 # folder with generated tests files
-tests
+# tests
 
 # file with working notes
 notes
@@ -16,7 +16,8 @@ openai_request_logs/
 __pycache__
 .venv
 .pytest_cache
-test*.py
+# test*.py
+projects/
 
 # ignore playwright stuff
 playwright.config.ts
@@ -27,5 +28,7 @@ node_modules/
 /playwright/.cache/
 .env
 
-# PyCharm files
+# IDE specific folders
 .idea/
+.vim/
+
