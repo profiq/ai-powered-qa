@@ -65,3 +65,4 @@ def test_playwright_plugin():
     plugin = PlaywrightPlugin("You can interact with web pages")
     plugin.tools[0][1]("https://www.google.com/")
     assert plugin._page.url == "https://www.google.com/"
+    plugin.playwright.stop()

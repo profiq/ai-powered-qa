@@ -138,9 +138,11 @@ class PlaywrightPlugin(Plugin):
         """
         self._page.goto(url)
         return 'OK'
+
+    @property
+    def playwright(self):
+        return self._playwright
     
 
     def __del__(self):
-        self._page.close()
-        self._browser.close()
         self._playwright.stop()

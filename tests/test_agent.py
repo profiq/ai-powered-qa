@@ -12,3 +12,4 @@ def test_agent_with_playwrights():
     agent.append_message("assistant", "", completion.tool_calls)
     plugin: PlaywrightPlugin = agent._plugins[0]
     assert plugin._page.url == "https://www.google.com/"
+    plugin.playwright.stop()
