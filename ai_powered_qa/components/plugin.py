@@ -1,10 +1,20 @@
-from abc import ABC
 import inspect
 import json
 import random
-
+from typing import Any, List
 import docstring_parser
 import playwright.sync_api
+
+from abc import ABC, abstractmethod
+from pydantic import BaseModel, PrivateAttr
+
+
+TYPE_MAP = {
+    "int": "integer",
+    "str": "string",
+    "float": "number",
+    "bool": "boolean",
+}
 
 
 def tool(method):
@@ -13,36 +23,29 @@ def tool(method):
     return method
 
 
-class Plugin(ABC):
-    TYPE_MAP = {
-        "int": "integer",
-        "str": "string",
-        "float": "number",
-        "bool": "boolean",
-    }
+class Plugin(BaseModel, ABC):
+    name: str
 
-    def __init__(self, system_message: str = ""):
-        self._system_message = system_message
-        self._tools = []
+    _tools: List[Any] = PrivateAttr(default_factory=list)
+
+    def __init__(self, **data):
+        super().__init__(**data)
         self._register_tools()
 
     @property
     def tools(self):
         return self._tools
 
-    @property
-    def system_message(self) -> str:
-        return self._system_message
+    def get_tools_for_gpt(self):
+        tools = [{"type": "function", "function": t[0]} for t in self._tools]
 
-    @system_message.setter
-    def system_message(self, value: str):
-        if not isinstance(value, str):
-            raise TypeError("system_message must be a string")
-        self._system_message = value
+        return tools
 
-    @property
-    def context(self) -> str:
-        return ""
+    def call_tool(self, tool_name: str, **kwargs):
+        for tool in self._tools:
+            if tool[0]["name"] == tool_name:
+                return tool[1](**kwargs)
+        return None
 
     def set_tool_description(
         self, tool_name: str, description: str, argument: str | None = None
@@ -80,13 +83,15 @@ class Plugin(ABC):
         param_object = {}
         for param in params:
             param_object[param.arg_name] = {
-                "type": self.TYPE_MAP.get(param.type_name, param.type_name),
+                "type": TYPE_MAP.get(param.type_name, param.type_name),
                 "description": param.description,
             }
         return param_object
 
 
 class RandomNumberPlugin(Plugin):
+    name: str = "RandomNumberPlugin"
+
     @tool
     def get_random_number(self, min_number: int = 0, max_number: int = 100):
         """
@@ -122,27 +127,31 @@ class RandomNumberPlugin(Plugin):
 
 
 class PlaywrightPlugin(Plugin):
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    name: str = "PlaywrightPlugin"
+
+    _playwright: playwright.sync_api.Playwright
+    _browser: playwright.sync_api.Browser
+    _page: playwright.sync_api.Page
+
+    def __init__(self, **data):
+        super().__init__(**data)
         self._playwright = playwright.sync_api.sync_playwright().start()
         self._browser = self._playwright.chromium.launch()
         self._page = self._browser.new_page()
 
     @tool
-    def navigate_to_url(self, url: str) :
+    def navigate_to_url(self, url: str):
         """
         Navigates to a URL
 
         :param str url: The URL to navigate to
         """
         self._page.goto(url)
-        return 'OK'
+        return "OK"
 
     @property
     def playwright(self):
         return self._playwright
-    
 
     def __del__(self):
         self._playwright.stop()
