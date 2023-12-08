@@ -1,72 +1,111 @@
-import openai
 import json
+from typing import Any, Dict, List
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+from openai import OpenAI
+
+from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
+from .utils import generate_short_id, md5
+
+load_dotenv()
 
 
-class Agent:
-    def __init__(
-        self, system_message="You are a helpful assistant.", model="gpt-3.5-turbo-1106"
-    ):
-        self._system_message = system_message
-        self._model = model
-        self._client = openai.OpenAI()
-        self._request_history = []
-        self._conversation_history = []
-        self._plugins = {}
+class Agent(BaseModel, validate_assignment=True, extra="ignore"):
+    # Agent identifiers
+    agent_name: str
+    version: int = 0
+    hash: str = ""
 
-    def generate_interaction(self, user_prompt: str = None, model=None):
-        model = model or self._model
+    # OpenAI API
+    client: Any = Field(default_factory=OpenAI, exclude=True)
+    model: str = Field(default="gpt-3.5-turbo-1106")
+
+    # Agent configuration
+    system_message: str = Field(default="You are a helpful assistant.")
+    plugins: Dict[str, Plugin] = Field(default_factory=dict)
+
+    # Agent state
+    history_id: str = Field(default_factory=generate_short_id, exclude=True)
+    # TODO: type correctly
+    history: List[Any] = Field(default=[], exclude=True)
+    request_history: List[str] = Field(default=[], exclude=True)
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.hash = self._compute_hash()
+
+    def __setattr__(self, name, value):
+        """Override the default __setattr__ method to update the hash and version when the agent's configuration changes."""
+        super().__setattr__(name, value)
+        if name not in ["hash", "version"]:
+            self._maybe_increment_version()
+
+    def _compute_hash(self):
+        return md5(self.model_dump_json(exclude=["hash", "version"]))
+
+    def _maybe_increment_version(self):
+        new_hash = self._compute_hash()
+        if self.hash != new_hash:
+            self.version += 1
+            self.hash = new_hash
+
+    def generate_interaction(self, user_prompt: str = None, model=None) -> Interaction:
+        model = model or self.model
         _messages = [
-            {"role": "system", "content": self._system_message},
-            *self._conversation_history,
+            {"role": "system", "content": self.system_message},
+            *self.history,
         ]
         if user_prompt:
             _messages.append({"role": "user", "content": user_prompt})
 
-        completion = self._client.chat.completions.create(
-            messages=_messages,
-            model=model,
-            tools=self._get_tools_from_plugins(),
-        )
+        request_params = {
+            "model": model,
+            "tools": self._get_tools_from_plugins(),
+            "messages": _messages,
+        }
+        completion = self.client.chat.completions.create(**request_params)
 
-        self._request_history.append(completion)
-        return completion.choices[0].message
+        return Interaction(
+            request_params=request_params,
+            user_prompt=user_prompt,
+            agent_response=completion.choices[0].message,
+        )
 
     def add_plugin(self, plugin: Plugin):
-        self._plugins[plugin.name] = plugin
+        self.plugins[plugin.name] = plugin
+        self._maybe_increment_version()
 
-    def commit_interaction(self, role: str, content: str, tool_calls: None | list = None):
-        print("appending message", role, content, tool_calls)
+    def commit_interaction(self, interaction: Interaction):
+        user_prompt = interaction.user_prompt
+        if user_prompt:
+            self.history.append({"role": "user", "content": user_prompt})
 
-        if not tool_calls:
-            self._conversation_history.append(
-                {"role": role, "content": content})
-            return
+        agent_response = interaction.agent_response
 
-        self._conversation_history.append(
-            {"role": "assistant", "content": content, "tool_calls": tool_calls}
-        )
+        self.history.append(agent_response)
 
-        for tool_call in tool_calls:
-            print(f"tool_call: ", tool_call, "\n")
+        if agent_response.tool_calls:
+            for tool_call in agent_response.tool_calls:
+                print(f"tool_call: ", tool_call, "\n")
 
-            p: Plugin
-            for p in self._plugins.values():
-                result = p.call_tool(tool_call.function.name, **json.loads(
-                    tool_call.function.arguments))
-                if result is not None:
-                    break
-            else:
-                raise Exception(
-                    f"Tool {tool_call.function.name} not found in any plugin!")
-            self._conversation_history.append(
-                {"role": "tool", "content": str(
-                    result), "tool_call_id": tool_call.id}
-            )
+                p: Plugin
+                for p in self.plugins.values():
+                    result = p.call_tool(tool_call.function.name, **json.loads(
+                        tool_call.function.arguments))
+                    if result is not None:
+                        break
+                else:
+                    raise Exception(
+                        f"Tool {tool_call.function.name} not found in any plugin!")
+                self.history.append(
+                    {"role": "tool", "content": str(
+                        result), "tool_call_id": tool_call.id}
+                )
 
-    def _get_tools_from_plugins(self):
+    def _get_tools_from_plugins(self) -> list[dict]:
         tools = []
         p: Plugin
-        for p in self._plugins.values():
+        for p in self.plugins.values():
             tools.extend(p.tools)
         return tools

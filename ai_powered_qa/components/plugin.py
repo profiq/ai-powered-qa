@@ -1,10 +1,20 @@
-from abc import ABC
 import inspect
 import json
 import random
-
+from typing import Any, List
 import docstring_parser
 import playwright.sync_api
+
+from abc import ABC, abstractmethod
+from pydantic import BaseModel, PrivateAttr
+
+
+TYPE_MAP = {
+    "int": "integer",
+    "str": "string",
+    "float": "number",
+    "bool": "boolean",
+}
 
 
 def tool(method):
@@ -13,39 +23,21 @@ def tool(method):
     return method
 
 
-class Plugin(ABC):
-    TYPE_MAP = {
-        "int": "integer",
-        "str": "string",
-        "float": "number",
-        "bool": "boolean",
-    }
-
+class Plugin(BaseModel, ABC):
     name: str
 
-    def __init__(self, system_message: str = ""):
-        self._system_message = system_message
-        self._tools = []  # tools passed to openai API
-        self._callable_tools = {}  # dict of "tool_name" : method that agent can call
+    _tools: List[Any] = PrivateAttr(default_factory=list)
+    # dict of "tool_name" : method that agent can call
+    _callable_tools: dict[str, Any] = PrivateAttr(default_factory=dict)
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # should plugins have a system message, that would edit the agent system message?
         self._register_tools()
 
     @property
     def tools(self):
         return self._tools
-
-    @property
-    def system_message(self) -> str:
-        return self._system_message
-
-    @system_message.setter
-    def system_message(self, value: str):
-        if not isinstance(value, str):
-            raise TypeError("system_message must be a string")
-        self._system_message = value
-
-    @property
-    def context(self) -> str:
-        return ""
 
     def set_tool_description(
         self, tool_name: str, description: str, argument: str | None = None
@@ -93,13 +85,15 @@ class Plugin(ABC):
         param_object = {}
         for param in params:
             param_object[param.arg_name] = {
-                "type": self.TYPE_MAP.get(param.type_name, param.type_name),
+                "type": TYPE_MAP.get(param.type_name, param.type_name),
                 "description": param.description,
             }
         return param_object
 
 
 class RandomNumberPlugin(Plugin):
+    name: str = "RandomNumberPlugin"
+
     @tool
     def get_random_number(self, min_number: int = 0, max_number: int = 100):
         """
@@ -140,8 +134,12 @@ class RandomNumberPlugin(Plugin):
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    _playwright: playwright.sync_api.Playwright
+    _browser: playwright.sync_api.Browser
+    _page: playwright.sync_api.Page
+
+    def __init__(self, **data):
+        super().__init__(**data)
         self._playwright = playwright.sync_api.sync_playwright().start()
         self._browser = self._playwright.chromium.launch()
         self._page = self._browser.new_page()
