@@ -1,11 +1,11 @@
 import inspect
 import json
 import random
-from typing import Any, List
+from typing import Any
 import docstring_parser
 import playwright.sync_api
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from pydantic import BaseModel, PrivateAttr
 
 
@@ -26,13 +26,13 @@ def tool(method):
 class Plugin(BaseModel, ABC):
     name: str
 
-    _tools: List[Any] = PrivateAttr(default_factory=list)
+    _tools: list = PrivateAttr(default_factory=list)
     # dict of "tool_name" : method that agent can call
     _callable_tools: dict[str, Any] = PrivateAttr(default_factory=dict)
 
     def __init__(self, **data):
         super().__init__(**data)
-        # should plugins have a system message, that would edit the agent system message?
+        # TODO should plugins have a system message, that would edit the agent system message?
         self._register_tools()
 
     @property
@@ -64,6 +64,7 @@ class Plugin(BaseModel, ABC):
                     tool_description = json.loads(docstring)
                 else:
                     docstring_parsed = docstring_parser.parse(docstring)
+                    # TODO find a docstring that can parse what parameters are required
                     tool_description = {
                         "type": "function",
                         "function": {

@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, List
+from typing import Any
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from openai import OpenAI
@@ -23,13 +23,12 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     # Agent configuration
     system_message: str = Field(default="You are a helpful assistant.")
-    plugins: Dict[str, Plugin] = Field(default_factory=dict)
+    plugins: dict[str, Plugin] = Field(default_factory=dict)
 
     # Agent state
     history_id: str = Field(default_factory=generate_short_id, exclude=True)
-    # TODO: type correctly
-    history: List[Any] = Field(default=[], exclude=True)
-    request_history: List[str] = Field(default=[], exclude=True)
+    history: list = Field(default=[], exclude=True)
+    request_history: list[str] = Field(default=[], exclude=True)
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -91,6 +90,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
                 p: Plugin
                 for p in self.plugins.values():
+                    # iterate all plugins until the plugin with correct tool is found
                     result = p.call_tool(tool_call.function.name, **json.loads(
                         tool_call.function.arguments))
                     if result is not None:
