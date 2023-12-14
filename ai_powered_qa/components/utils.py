@@ -1,3 +1,6 @@
+import hashlib
+import random
+import string
 from bs4 import BeautifulSoup, Tag
 
 
@@ -25,8 +28,8 @@ async def amark_invisible_elements(page):
     viewport_width = viewport_size["width"]
     viewport_height = viewport_size["height"]
 
-    body = await page.query_selector("body")
-    for element in await body.query_selector_all("*"):
+    body = page.locator("body")
+    for element in await body.all():
         # TODO: mark visible elements too?
         if not await ais_element_in_viewport(element, viewport_width, viewport_height):
             await element.evaluate('el => el.setAttribute("data-visible", "false")')
@@ -66,17 +69,44 @@ def mark_invisible_elements(page):
 
 def clean_attributes(tag):
     # List of attributes to remove, add or remove attributes as needed
-    blocked_attrs = ["class", "style", "jsaction", "jscontroller", "data-p", "jsrenderer", "c-wiz", "jsmodel", "data-idom-class",
-                     "jsshadow", "jsslot", "dir", "aria-hidden", "aria-haspopup", "aria-expanded", "aria-atomic",
-                     "aria-live", "aria-relevant", "aria-disabled", "aria-labelledby", "aria-describedby",
-                     "aria-controls"]
+    blocked_attrs = [
+        "class",
+        "style",
+        "jsaction",
+        "jscontroller",
+        "data-p",
+        "jsrenderer",
+        "c-wiz",
+        "jsmodel",
+        "data-idom-class",
+        "jsshadow",
+        "jsslot",
+        "dir",
+        "aria-hidden",
+        "aria-haspopup",
+        "aria-expanded",
+        "aria-atomic",
+        "aria-live",
+        "aria-relevant",
+        "aria-disabled",
+        "aria-labelledby",
+        "aria-describedby",
+        "aria-controls",
+    ]
     tag.attrs = {k: v for k, v in tag.attrs.items() if k not in blocked_attrs}
 
 
 def remove_specific_tags(soup):
     # List of tags to remove
-    tags_to_remove = ["path", "meta", "link",
-                      "noscript", "script", "style", "title", ]
+    tags_to_remove = [
+        "path",
+        "meta",
+        "link",
+        "noscript",
+        "script",
+        "style",
+        "title",
+    ]
     for t in soup.find_all(tags_to_remove):
         t.decompose()
 
@@ -99,7 +129,10 @@ def remove_nonrelevant_tags(soup):
     for tag in soup.find_all(lambda tag: not tag.contents and not tag.attrs):
         tag.decompose()
     for tag in soup.find_all(
-            lambda tag: len(tag.contents) == 1 and not tag.attrs and not tag.name in ['body', 'br', 'p', 'head', 'html']):
+        lambda tag: len(tag.contents) == 1
+        and not tag.attrs
+        and not tag.name in ["body", "br", "p", "head", "html"]
+    ):
         # if tag has only one child
         tag.unwrap()
 
@@ -112,3 +145,13 @@ def strip_html_to_structure(html_content):
     remove_nonrelevant_tags(soup)
 
     return str(soup)
+
+
+def generate_short_id():
+    characters = string.ascii_letters + string.digits
+    return "".join(random.choice(characters) for _ in range(6))
+
+
+def md5(input_string: str) -> str:
+    """Generate an MD5 hash for a given input string."""
+    return hashlib.md5(input_string.encode()).hexdigest()
