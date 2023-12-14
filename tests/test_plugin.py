@@ -1,5 +1,5 @@
 from ai_powered_qa.components.plugin import RandomNumberPlugin
-from ai_powered_qa.components.plugin import PlaywrightPlugin
+from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 
 
 def test_automatic_tool_description():
