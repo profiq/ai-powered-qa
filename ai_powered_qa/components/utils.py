@@ -28,8 +28,8 @@ async def amark_invisible_elements(page):
     viewport_width = viewport_size["width"]
     viewport_height = viewport_size["height"]
 
-    body = await page.query_selector("body")
-    for element in await body.query_selector_all("*"):
+    body = page.locator("body")
+    for element in await body.all():
         # TODO: mark visible elements too?
         if not await ais_element_in_viewport(element, viewport_width, viewport_height):
             await element.evaluate('el => el.setAttribute("data-visible", "false")')
