@@ -27,8 +27,7 @@ class PlaywrightPlugin(Plugin):
         self._page = self.get_current_page(self._browser)
         try:
             response = self._page.goto(url)
-        except Exception as e:
-            return e
+        except Exception:
             return f"Unable to navigate to {url}"
 
         return f"Navigating to {url} returned status code {response.status if response else 'unknown'}"
