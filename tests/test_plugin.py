@@ -4,13 +4,27 @@ from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 
 def test_automatic_tool_description():
     plugin = RandomNumberPlugin()
-    expected_element = {"type": "function", "function": {"name": "get_random_number",
-                        "description": "Returns a random number in the specified range",
-                                                         "parameters": {"type": "object",
-                                                                        "properties": {"min_number": {"type": "integer",
-                                                                                                      "description": "The minimum number"},
-                                                                                       "max_number": {"type": "integer",
-                                                                                                      "description": "The maximum number"}}}}}
+    expected_element = {
+        "type": "function",
+        "function": {
+            "name": "get_random_number",
+            "description": "Returns a random number in the specified range",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "min_number": {
+                        "type": "integer",
+                        "description": "The minimum number",
+                    },
+                    "max_number": {
+                        "type": "integer",
+                        "description": "The maximum number",
+                    },
+                },
+                "required": ["min_number"],
+            },
+        },
+    }
     assert expected_element in plugin.tools
 
 
@@ -30,7 +44,9 @@ def test_tool_description_override():
         "min_number",
     )
     assert (
-        plugin.tools[1]["function"]["parameters"]["properties"]["min_number"]["description"]
+        plugin.tools[1]["function"]["parameters"]["properties"]["min_number"][
+            "description"
+        ]
         == "The low end of the range"
     )
 
