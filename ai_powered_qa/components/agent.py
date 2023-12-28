@@ -60,9 +60,11 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
         request_params = {
             "model": model,
-            "tools": self._get_tools_from_plugins(),
             "messages": _messages,
         }
+        tools = self._get_tools_from_plugins()
+        if len(tools) > 0:
+            request_params["tools"] = tools
         completion = self.client.chat.completions.create(**request_params)
 
         return Interaction(
@@ -82,7 +84,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
         agent_response = interaction.agent_response
 
-        self.history.append(agent_response)
+        self.history.append(agent_response.model_dump(exclude_unset=True))
 
         if agent_response.tool_calls:
             for tool_call in agent_response.tool_calls:
@@ -91,16 +93,22 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
                 p: Plugin
                 for p in self.plugins.values():
                     # iterate all plugins until the plugin with correct tool is found
-                    result = p.call_tool(tool_call.function.name, **json.loads(
-                        tool_call.function.arguments))
+                    result = p.call_tool(
+                        tool_call.function.name,
+                        **json.loads(tool_call.function.arguments),
+                    )
                     if result is not None:
                         break
                 else:
                     raise Exception(
-                        f"Tool {tool_call.function.name} not found in any plugin!")
+                        f"Tool {tool_call.function.name} not found in any plugin!"
+                    )
                 self.history.append(
-                    {"role": "tool", "content": str(
-                        result), "tool_call_id": tool_call.id}
+                    {
+                        "role": "tool",
+                        "content": str(result),
+                        "tool_call_id": tool_call.id,
+                    }
                 )
 
     def _get_tools_from_plugins(self) -> list[dict]:
