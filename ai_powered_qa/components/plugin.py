@@ -5,7 +5,7 @@ from typing import Any
 import docstring_parser
 
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from pydantic import BaseModel, PrivateAttr
 
 
@@ -104,6 +104,10 @@ class Plugin(BaseModel, ABC):
             if param.default is inspect.Parameter.empty:
                 required_params.append(param_name)
         return required_params
+
+    @abstractmethod
+    def reset_history(self, history):
+        pass
 
 
 class RandomNumberPlugin(Plugin):

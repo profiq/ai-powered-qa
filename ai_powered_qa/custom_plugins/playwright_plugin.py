@@ -1,7 +1,9 @@
-from ai_powered_qa.components.plugin import Plugin, tool
+import asyncio
+import json
 import playwright.sync_api
 import playwright.async_api
-import asyncio
+
+from ai_powered_qa.components.plugin import Plugin, tool
 
 
 class PlaywrightPlugin(Plugin):
@@ -97,7 +99,7 @@ class PlaywrightPlugin(Plugin):
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:
             self._playwright = await playwright.async_api.async_playwright().start()
-            self._browser = await self._playwright.chromium.launch()
+            self._browser = await self._playwright.chromium.launch(headless=False)
             self._page = await self._browser.new_page()
         return self._page
 
@@ -111,3 +113,16 @@ class PlaywrightPlugin(Plugin):
             await self._browser.close()
         if self._playwright:
             await self._playwright.stop()
+
+    def reset_history(self, history):
+        self.close()
+        self._playwright = None
+        self._browser = None
+        self._page = None
+        for message in history:
+            if message["role"] == "tool":
+                for tool_call in message["tool_calls"]:
+                    self.call_tool(
+                        tool_call["function"]["name"],
+                        **json.loads(tool_call["function"]["arguments"]),
+                    )

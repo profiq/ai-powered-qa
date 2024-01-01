@@ -1,7 +1,6 @@
 import json
 import streamlit as st
 
-from ai_powered_qa.components.agent import Agent
 from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 
@@ -99,7 +98,6 @@ for tool_id, tool_info in tool_calls.items():
     st.session_state[f"{tool_id}_name"] = tool_info["name"]
     st.session_state[f"{tool_id}_arguments"] = tool_info["arguments"]
 
-
 with st.chat_message("assistant"):
     with st.form("agent_message"):
         st.text_area(
@@ -116,3 +114,5 @@ with st.chat_message("assistant"):
             on_click=on_commit,
             args=(interaction,),
         )
+
+st.button("Reset history", on_click=agent.reset_history)

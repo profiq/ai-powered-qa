@@ -66,6 +66,17 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             self.version += 1
             self.hash = new_hash
 
+    def add_plugin(self, plugin: Plugin):
+        self.plugins[plugin.name] = plugin
+        self._maybe_increment_version()
+
+    def _get_tools_from_plugins(self) -> list[dict]:
+        tools = []
+        p: Plugin
+        for p in self.plugins.values():
+            tools.extend(p.tools)
+        return tools
+
     def generate_interaction(self, user_prompt: str = None, model=None) -> Interaction:
         model = model or self.model
         _messages = [
@@ -92,10 +103,6 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             user_prompt=user_prompt,
             agent_response=completion.choices[0].message,
         )
-
-    def add_plugin(self, plugin: Plugin):
-        self.plugins[plugin.name] = plugin
-        self._maybe_increment_version()
 
     def commit_interaction(self, interaction: Interaction) -> Interaction:
         interaction.committed = True
@@ -134,12 +141,12 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             self.history.extend(tool_responses)
         return interaction
 
-    def _get_tools_from_plugins(self) -> list[dict]:
-        tools = []
+    def reset_history(self):
+        self.history = []
+        self.history_id = generate_short_id()
         p: Plugin
         for p in self.plugins.values():
-            tools.extend(p.tools)
-        return tools
+            p.reset_history(self.history)
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
