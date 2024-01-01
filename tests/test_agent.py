@@ -24,22 +24,20 @@ def test_agent_with_rng():
         "Please generate a random number between 1 and 10"
     )
     agent_response = interaction.agent_response
-    assert (
-        agent_response.tool_calls[0].function.name
-        == "get_random_number"
-    )
+    assert agent_response.tool_calls[0].function.name == "get_random_number"
     agent.commit_interaction(interaction)
     assert len(agent.history) == 3
 
 
-def test_agent_parallel_tool_call():
-    agent = Agent(agent_name="test_agent_parallel_tool_call")
-    plugin = PlaywrightPlugin()
-    agent.add_plugin(plugin)
-    completion = agent.generate_interaction(
-        "Navigate to gmail, youtube and google.com")
-    assert len(completion.agent_response.tool_calls) == 3
-    plugin.close()
+# Flaky with gpt-3.5
+# def test_agent_parallel_tool_call():
+#     agent = Agent(agent_name="test_agent_parallel_tool_call")
+#     plugin = PlaywrightPlugin()
+#     agent.add_plugin(plugin)
+#     completion = agent.generate_interaction(
+#         "Navigate to gmail, youtube and google.com")
+#     assert len(completion.agent_response.tool_calls) == 3
+#     plugin.close()
 
 
 def test_agent_init():

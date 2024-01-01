@@ -1,12 +1,13 @@
 import json
 from typing import Any
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from openai import OpenAI
 
 from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
 from .utils import generate_short_id, md5
+from .plugin_name_to_class import PLUGIN_NAME_TO_CLASS
 
 load_dotenv()
 
@@ -33,6 +34,23 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     def __init__(self, **data):
         super().__init__(**data)
         self.hash = self._compute_hash()
+
+    @model_validator(mode="before")
+    @classmethod
+    def register_plugins(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "plugins" in data:
+            plugins = {}
+            for plugin_name, plugin_config in data["plugins"].items():
+                if isinstance(plugin_config, dict):
+                    if plugin_name in PLUGIN_NAME_TO_CLASS:
+                        plugin_class = PLUGIN_NAME_TO_CLASS[plugin_name]
+                        plugins[plugin_name] = plugin_class(**plugin_config)
+                    else:
+                        raise ValueError(f"Invalid plugin name: {plugin_name}")
+                else:
+                    plugins[plugin_name] = plugin_config
+            data["plugins"] = plugins
+        return data
 
     def __setattr__(self, name, value):
         """Override the default __setattr__ method to update the hash and version when the agent's configuration changes."""

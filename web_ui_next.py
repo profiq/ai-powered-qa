@@ -2,7 +2,10 @@ import json
 import streamlit as st
 
 from ai_powered_qa.components.agent import Agent
+from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
+
+SYSTEM_MESSAGE_KEY = "agent_system_message"
 
 
 def on_commit(interaction):
@@ -23,26 +26,31 @@ agent_name = st.text_input("Agent name", value="test_agent")
 
 
 @st.cache_resource
-def get_playwright_plugin():
-    return PlaywrightPlugin()
+def get_agent_store():
+    return AgentStore("agents")
+
+
+agent_store = get_agent_store()
 
 
 @st.cache_resource
-def get_agent(agent_name, _playwright_plugin):
-    agent = Agent(agent_name=agent_name)
-    agent.add_plugin(_playwright_plugin)
-    return agent
+def get_agent(agent_name):
+    new_agent = agent_store.load_agent(
+        agent_name, default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}}
+    )
+    st.session_state[SYSTEM_MESSAGE_KEY] = new_agent.system_message
+    return new_agent
 
 
-playwright_plugin = get_playwright_plugin()
+agent = get_agent(agent_name)
 
-agent = get_agent(agent_name, playwright_plugin)
+st.write(agent)
 
-
-system_message_key = "agent_system_message"
-if not system_message_key in st.session_state:
-    st.session_state[system_message_key] = agent.system_message
 agent.system_message = st.text_input("System message", key="agent_system_message")
+
+st.write(agent.model_dump())
+
+agent_store.save_agent(agent)
 
 
 for message in agent.history:
