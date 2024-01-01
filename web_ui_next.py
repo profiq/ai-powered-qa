@@ -8,23 +8,6 @@ from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 SYSTEM_MESSAGE_KEY = "agent_system_message"
 
 
-def on_commit(interaction):
-    st.session_state["user_message_content"] = None
-    interaction.agent_response.content = st.session_state["agent_message_content"]
-    st.session_state["agent_message_content"] = None
-    if interaction.agent_response.tool_calls:
-        for tool_call in interaction.agent_response.tool_calls:
-            tool_call.function.name = st.session_state[f"{tool_call.id}_name"]
-            del st.session_state[f"{tool_call.id}_name"]
-            tool_call.function.arguments = st.session_state[f"{tool_call.id}_arguments"]
-            del st.session_state[f"{tool_call.id}_arguments"]
-
-    agent.commit_interaction(interaction=interaction)
-
-
-agent_name = st.text_input("Agent name", value="test_agent")
-
-
 @st.cache_resource
 def get_agent_store():
     return AgentStore("agents")
@@ -42,13 +25,28 @@ def get_agent(agent_name):
     return new_agent
 
 
+agent_name = st.text_input("Agent name", value="test_agent")
 agent = get_agent(agent_name)
 
-st.write(agent)
+
+def on_commit(interaction):
+    st.session_state["user_message_content"] = None
+    interaction.agent_response.content = st.session_state["agent_message_content"]
+    st.session_state["agent_message_content"] = None
+    if interaction.agent_response.tool_calls:
+        for tool_call in interaction.agent_response.tool_calls:
+            tool_call.function.name = st.session_state[f"{tool_call.id}_name"]
+            del st.session_state[f"{tool_call.id}_name"]
+            tool_call.function.arguments = st.session_state[f"{tool_call.id}_arguments"]
+            del st.session_state[f"{tool_call.id}_arguments"]
+
+    agent_store.save_interaction(
+        agent, agent.commit_interaction(interaction=interaction)
+    )
+    agent_store.save_history(agent)
+
 
 agent.system_message = st.text_input("System message", key="agent_system_message")
-
-st.write(agent.model_dump())
 
 agent_store.save_agent(agent)
 
@@ -82,6 +80,8 @@ if last_message is None or last_message["role"] == "assistant":
 
 
 interaction = agent.generate_interaction(user_message_content)
+
+agent_store.save_interaction(agent, interaction)
 
 agent_response = interaction.agent_response.model_dump()
 

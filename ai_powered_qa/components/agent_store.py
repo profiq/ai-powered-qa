@@ -3,6 +3,7 @@ import json
 from glob import glob
 
 from ai_powered_qa.components.agent import Agent
+from ai_powered_qa.components.interaction import Interaction
 
 
 class AgentStore:
@@ -52,3 +53,30 @@ class AgentStore:
             config_data = json.load(file)
 
         return Agent(**config_data)
+
+    def save_history(self, agent: Agent):
+        file_name = f"full_history.json"
+        history_directory = os.path.join(
+            self._directory, agent.agent_name, agent.history_id
+        )
+        file_path = os.path.join(history_directory, file_name)
+
+        if not os.path.exists(history_directory):
+            os.makedirs(history_directory)
+
+        with open(file_path, "w") as file:
+            file.write(json.dumps(agent.history, indent=4))
+
+    def save_interaction(self, agent: Agent, interaction: Interaction):
+        num_of_messages = len(interaction.request_params["messages"])
+        file_name = f"interaction_{num_of_messages}_{interaction.id}.json"
+        history_directory = os.path.join(
+            self._directory, agent.agent_name, agent.history_id
+        )
+        file_path = os.path.join(history_directory, file_name)
+
+        if not os.path.exists(history_directory):
+            os.makedirs(history_directory)
+
+        with open(file_path, "w") as file:
+            file.write(interaction.model_dump_json(indent=4))
