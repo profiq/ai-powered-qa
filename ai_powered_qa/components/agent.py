@@ -55,6 +55,9 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             {"role": "system", "content": self.system_message},
             *self.history,
         ]
+
+        _messages.append({"role": "user", "content": self._generate_context_message()})
+
         if user_prompt:
             _messages.append({"role": "user", "content": user_prompt})
 
@@ -117,3 +120,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         for p in self.plugins.values():
             tools.extend(p.tools)
         return tools
+
+    def _generate_context_message(self):
+        contexts = [p.context_message for p in self.plugins.values()]
+        return "\n\n".join(contexts)
