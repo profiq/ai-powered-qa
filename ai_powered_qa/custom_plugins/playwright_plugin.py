@@ -62,7 +62,7 @@ class PlaywrightPlugin(Plugin):
             return f"{selector} >> visible=1 >> nth={index}"
 
         playwright_strict: bool = False
-        page = self.ensure_page()
+        page = await self.ensure_page()
         try:
             await page.click(
                 selector=_selector_effective(selector, index),
