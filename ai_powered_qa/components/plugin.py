@@ -35,6 +35,10 @@ class Plugin(BaseModel, ABC):
         self._register_tools()
 
     @property
+    def context_message(self) -> str:
+        return ""
+
+    @property
     def system_message(self) -> str:
         return ""
 

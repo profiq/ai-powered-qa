@@ -55,6 +55,9 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             {"role": "system", "content": self.system_message},
             *self.history,
         ]
+
+        _messages.append({"role": "user", "content": self._generate_context_message()})
+
         if user_prompt:
             _messages.append({"role": "user", "content": user_prompt})
 
@@ -81,7 +84,6 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             self.history.append({"role": "user", "content": user_prompt})
 
         agent_response = interaction.agent_response
-
         self.history.append(agent_response)
 
         if agent_response.tool_calls:
@@ -91,16 +93,22 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
                 p: Plugin
                 for p in self.plugins.values():
                     # iterate all plugins until the plugin with correct tool is found
-                    result = p.call_tool(tool_call.function.name, **json.loads(
-                        tool_call.function.arguments))
+                    result = p.call_tool(
+                        tool_call.function.name,
+                        **json.loads(tool_call.function.arguments),
+                    )
                     if result is not None:
                         break
                 else:
                     raise Exception(
-                        f"Tool {tool_call.function.name} not found in any plugin!")
+                        f"Tool {tool_call.function.name} not found in any plugin!"
+                    )
                 self.history.append(
-                    {"role": "tool", "content": str(
-                        result), "tool_call_id": tool_call.id}
+                    {
+                        "role": "tool",
+                        "content": str(result),
+                        "tool_call_id": tool_call.id,
+                    }
                 )
 
     def _get_tools_from_plugins(self) -> list[dict]:
@@ -109,3 +117,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         for p in self.plugins.values():
             tools.extend(p.tools)
         return tools
+
+    def _generate_context_message(self):
+        contexts = [p.context_message for p in self.plugins.values()]
+        return "\n\n".join(contexts)
