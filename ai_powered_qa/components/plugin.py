@@ -32,8 +32,11 @@ class Plugin(BaseModel, ABC):
 
     def __init__(self, **data):
         super().__init__(**data)
-        # TODO should plugins have a system message, that would edit the agent system message?
         self._register_tools()
+
+    @property
+    def system_message(self) -> str:
+        return ""
 
     @property
     def tools(self):
@@ -64,7 +67,6 @@ class Plugin(BaseModel, ABC):
                     tool_description = json.loads(docstring)
                 else:
                     docstring_parsed = docstring_parser.parse(docstring)
-                    # TODO find a docstring that can parse what parameters are required
                     tool_description = {
                         "type": "function",
                         "function": {
@@ -75,12 +77,12 @@ class Plugin(BaseModel, ABC):
                                 "properties": self._build_param_object(
                                     docstring_parsed.params
                                 ),
+                                "required": self._get_required_params(method),
                             },
                         },
                     }
                 self._tools.append(tool_description)
-                self._callable_tools[tool_description["function"]
-                                     ["name"]] = method
+                self._callable_tools[tool_description["function"]["name"]] = method
 
     def _build_param_object(self, params):
         param_object = {}
@@ -91,12 +93,20 @@ class Plugin(BaseModel, ABC):
             }
         return param_object
 
+    def _get_required_params(self, method):
+        method_signature = inspect.signature(method)
+        required_params = []
+        for param_name, param in method_signature.parameters.items():
+            if param.default is inspect.Parameter.empty:
+                required_params.append(param_name)
+        return required_params
+
 
 class RandomNumberPlugin(Plugin):
     name: str = "RandomNumberPlugin"
 
     @tool
-    def get_random_number(self, min_number: int = 0, max_number: int = 100):
+    def get_random_number(self, min_number: int, max_number: int = 100):
         """
         Returns a random number in the specified range
 
