@@ -63,9 +63,11 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
         request_params = {
             "model": model,
-            "tools": self._get_tools_from_plugins(),
             "messages": _messages,
         }
+        tools = self._get_tools_from_plugins()
+        if len(tools) > 0:
+            request_params["tools"] = tools
         completion = self.client.chat.completions.create(**request_params)
 
         return Interaction(
@@ -84,7 +86,8 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             self.history.append({"role": "user", "content": user_prompt})
 
         agent_response = interaction.agent_response
-        self.history.append(agent_response)
+
+        self.history.append(agent_response.model_dump(exclude_unset=True))
 
         if agent_response.tool_calls:
             for tool_call in agent_response.tool_calls:

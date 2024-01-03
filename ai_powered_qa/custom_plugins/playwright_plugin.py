@@ -7,15 +7,20 @@ import asyncio
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
 
-    _playwright: playwright.sync_api.Playwright
-    _browser: playwright.sync_api.Browser
-    _page: playwright.sync_api.Page
+    _playwright: playwright.async_api.Playwright
+    _browser: playwright.async_api.Browser
+    _page: playwright.async_api.Page
 
     def __init__(self, **data):
         super().__init__(**data)
-        self._playwright = playwright.sync_api.sync_playwright().start()
-        self._browser = self._playwright.chromium.launch()
-        self._page = self._browser.new_page()
+        self._playwright = None
+        self._browser = None
+        self._page = None
+        self._loop = asyncio.new_event_loop()
+
+    def run_async(self, coroutine):
+        asyncio.set_event_loop(self._loop)
+        return self._loop.run_until_complete(coroutine)
 
     @tool
     def navigate_to_url(self, url: str):
@@ -24,11 +29,14 @@ class PlaywrightPlugin(Plugin):
 
         :param str url: The URL to navigate to.
         """
-        self._page = self.get_current_page(self._browser)
+        return self.run_async(self._navigate_to_url(url))
+
+    async def _navigate_to_url(self, url: str):
+        page = await self.ensure_page()
         try:
-            response = self._page.goto(url)
-        except Exception:
-            return f"Unable to navigate to {url}"
+            response = await page.goto(url)
+        except Exception as e:
+            return f"Unable to navigate to {url}."
 
         return f"Navigating to {url} returned status code {response.status if response else 'unknown'}"
 
@@ -41,7 +49,11 @@ class PlaywrightPlugin(Plugin):
         :param int index: Index of the element to click
         :param int timeout: Timeout for Playwright to wait for element to be ready.
         """
+        return self.run_async(self._click_element(selector, index, timeout))
 
+    async def _click_element(
+        self, selector: str, index: int = 0, timeout: int = 3_000
+    ) -> str:
         visible_only: bool = True
 
         def _selector_effective(selector: str, index: int) -> str:
@@ -50,11 +62,13 @@ class PlaywrightPlugin(Plugin):
             return f"{selector} >> visible=1 >> nth={index}"
 
         playwright_strict: bool = False
-        page = self.get_current_page(self._browser)
+        page = await self.ensure_page()
         try:
-            page.click(selector=_selector_effective(selector, index),
-                       strict=playwright_strict,
-                       timeout=timeout)
+            await page.click(
+                selector=_selector_effective(selector, index),
+                strict=playwright_strict,
+                timeout=timeout,
+            )
         except TimeoutError:
             return f"Unable to click on element '{selector}'"
 
@@ -70,30 +84,30 @@ class PlaywrightPlugin(Plugin):
         :param int timeout: Timeout for Playwright to wait for element to be ready.
         """
 
-        page = self.get_current_page(self._browser)
+        return self.run_async(self._fill_element(selector, text, timeout))
+
+    async def _fill_element(self, selector: str, text: str, timeout: int = 3000):
+        page = await self.ensure_page()
         try:
-            page.locator(selector).fill(text, timeout=timeout)
+            await page.locator(selector).fill(text, timeout=timeout)
         except Exception:
             return f"Unable to fill up text on element '{selector}'."
         return f"Text input on the element by text, {selector}, was successfully performed."
 
-    @staticmethod
-    def get_current_page(browser: playwright.sync_api.Browser) -> playwright.sync_api.Page:
-        if not browser.contexts:
-            raise Exception("No browser contexts found")
-        # Get the first browser context
-        context = browser.contexts[0]
-        if not context.pages:
-            raise Exception("No pages found in the browser context")
-        # Get the last page in the context (assuming the last one is the active one)
-        page = context.pages[-1]
-
-        return page
+    async def ensure_page(self) -> playwright.async_api.Page:
+        if not self._page:
+            self._playwright = await playwright.async_api.async_playwright().start()
+            self._browser = await self._playwright.chromium.launch()
+            self._page = await self._browser.new_page()
+        return self._page
 
     def close(self):
+        self.run_async(self._close())
+
+    async def _close(self):
         if self._page:
-            self._page.close()
+            await self._page.close()
         if self._browser:
-            self._browser.close()
+            await self._browser.close()
         if self._playwright:
-            self._playwright.stop()
+            await self._playwright.stop()
