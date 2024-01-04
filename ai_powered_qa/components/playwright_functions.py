@@ -56,7 +56,7 @@ class ClickFunction(FunctionBase):
                  page: Page,
                  selector: str = Field(..., description="CSS selector for the element to click"),
                  index: int = Field(0, description="Index of the element to click"),
-                 timeout: float = Field(3_000, description="Timeout for Playwright to wait for element to be ready.")):
+                 timeout: float = 3000):
         super().__init__(page)
         self.selector = selector
         self.index = index
@@ -95,9 +95,9 @@ class FillFunction(FunctionBase):
                  page: Page,
                  selector: str = Field(..., description="Selector for the element by text content.", ),
                  text: str = Field(..., description="Text what you want to fill up."),
-                 timeout: float = Field(3_000, description="Timeout for Playwright to wait for element to be ready.")):
+                 timeout: float = 3000):
         super().__init__(page)
-        self.selector = selector
+        self.selector = selector.replace("\"", "'")
         self.text = text
         self.timeout = timeout
 
@@ -107,5 +107,4 @@ class FillFunction(FunctionBase):
         except Exception:
             return f"Unable to fill up text on element '{self.selector}'."
 
-        print(f"Filled {self.selector} {self.text}")
         return f"Text input on the element by text, {self.selector}, was successfully performed."

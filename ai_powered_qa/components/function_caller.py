@@ -21,7 +21,7 @@ async def get_browser() -> Browser:
 
 async def call_function(browser, json_function):
     available_functions = {tool.name: tool for tool in [NavigateFunction, ClickFunction, FillFunction]}
-    print(f'JSON FUNCTION: {json_function}')
+    print(json_function)
     function_to_call = available_functions[json_function.name]
     function_arguments = ast.literal_eval(json_function.arguments)
     function_response = await function_to_call(page=await get_current_page(browser), **function_arguments).arun()
@@ -36,6 +36,19 @@ def get_function_list():
                     "description": function_cls.description,
                     "parameters": function_cls.parameters}
         list_of_functions.append(function)
+    return list_of_functions
+
+
+def get_function_list_for_assistant():
+    list_of_functions = []
+    for function_cls in [NavigateFunction, ClickFunction, FillFunction]:
+        function = {"name": function_cls.name,
+                    "description": function_cls.description,
+                    "parameters": function_cls.parameters}
+
+        func_base = {"type": "function",
+                     "function": function}
+        list_of_functions.append(func_base)
     return list_of_functions
 
 
