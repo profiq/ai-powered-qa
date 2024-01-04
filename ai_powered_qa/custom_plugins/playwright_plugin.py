@@ -4,6 +4,10 @@ import playwright.sync_api
 import playwright.async_api
 
 from ai_powered_qa.components.plugin import Plugin, tool
+from ai_powered_qa.components.utils import (
+    strip_html_to_structure,
+    amark_invisible_elements,
+)
 
 
 class PlaywrightPlugin(Plugin):
@@ -24,6 +28,18 @@ class PlaywrightPlugin(Plugin):
         asyncio.set_event_loop(self._loop)
         return self._loop.run_until_complete(coroutine)
 
+    @property
+    def context_message(self) -> str:
+        html = self.run_async(self._get_page_content())
+        return f"Current page content:\n\n ```\n{html}\n```"
+
+    async def _get_page_content(self):
+        page = await self.ensure_page()
+        html_content = await page.content()
+        stripped_html = strip_html_to_structure(html_content)
+        print(stripped_html)
+        return stripped_html
+
     @tool
     def navigate_to_url(self, url: str):
         """
@@ -37,7 +53,7 @@ class PlaywrightPlugin(Plugin):
         page = await self.ensure_page()
         try:
             response = await page.goto(url)
-        except Exception as e:
+        except Exception:
             return f"Unable to navigate to {url}."
 
         return f"Navigating to {url} returned status code {response.status if response else 'unknown'}"

@@ -71,8 +71,9 @@ def test_custom_tool_description():
 def test_playwright_navigate():
     plugin = PlaywrightPlugin()
     tool_name = "navigate_to_url"
-    url = "https://www.google.com/"
+    url = "https://opinionet.swarm.svana.name/"
     response = plugin.call_tool(tool_name, url=url)
     assert response == f"Navigating to {url} returned status code 200"
     assert plugin._page.url == url
+    assert '<div id="root">' in plugin.context_message
     plugin.close()

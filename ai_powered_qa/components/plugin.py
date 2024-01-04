@@ -105,7 +105,6 @@ class Plugin(BaseModel, ABC):
                 required_params.append(param_name)
         return required_params
 
-    @abstractmethod
     def reset_history(self, history):
         pass
 
