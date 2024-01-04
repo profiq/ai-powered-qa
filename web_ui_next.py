@@ -80,6 +80,11 @@ if last_message is None or last_message["role"] == "assistant":
 
 interaction = agent.generate_interaction(user_message_content)
 
+context_message = interaction.request_params["messages"][-1]
+
+with st.chat_message("user"):
+    st.write(context_message["content"])
+
 agent_store.save_interaction(agent, interaction)
 
 agent_response = interaction.agent_response.model_dump()

@@ -81,7 +81,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         model = model or self.model
         _messages = [
             {"role": "system", "content": self.system_message},
-            *self.history,
+            *(self.history[:-10]),
         ]
 
         _messages.append({"role": "user", "content": self._generate_context_message()})
