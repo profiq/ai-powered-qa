@@ -9,7 +9,12 @@ SYSTEM_MESSAGE_KEY = "agent_system_message"
 
 @st.cache_resource
 def get_agent_store():
-    return AgentStore("agents")
+    return AgentStore(
+        "agents",
+        name_to_plugin_class={
+            "PlaywrightPlugin": PlaywrightPlugin,
+        },
+    )
 
 
 agent_store = get_agent_store()
@@ -77,10 +82,17 @@ if last_message is None or last_message["role"] == "assistant":
         if not user_message_content:
             st.stop()
 
+try:
+    interaction = agent.generate_interaction(user_message_content)
+except Exception as e:
+    st.write(e)
+    st.stop()
 
-interaction = agent.generate_interaction(user_message_content)
-
-context_message = interaction.request_params["messages"][-1]
+context_message = (
+    interaction.request_params["messages"][-2]
+    if interaction.user_prompt
+    else interaction.request_params["messages"][-1]
+)
 
 with st.chat_message("user"):
     st.write(context_message["content"])

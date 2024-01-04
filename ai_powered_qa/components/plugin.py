@@ -5,7 +5,7 @@ from typing import Any
 import docstring_parser
 
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from pydantic import BaseModel, PrivateAttr
 
 

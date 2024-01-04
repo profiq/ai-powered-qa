@@ -7,8 +7,9 @@ from ai_powered_qa.components.interaction import Interaction
 
 
 class AgentStore:
-    def __init__(self, directory: str):
+    def __init__(self, directory: str, name_to_plugin_class: dict = {}):
         self._directory = directory
+        self._name_to_plugin_class = name_to_plugin_class
 
     def save_agent(self, agent: Agent):
         file_name = f"{agent.agent_name}_config_v{agent.version}.json"
@@ -51,6 +52,19 @@ class AgentStore:
 
         with open(file_path, "r") as file:
             config_data = json.load(file)
+
+        if isinstance(config_data, dict) and "plugins" in config_data:
+            plugins = {}
+            for plugin_name, plugin_config in config_data["plugins"].items():
+                if isinstance(plugin_config, dict):
+                    if plugin_name in self._name_to_plugin_class:
+                        plugin_class = self._name_to_plugin_class[plugin_name]
+                        plugins[plugin_name] = plugin_class(**plugin_config)
+                    else:
+                        raise ValueError(f"Invalid plugin name: {plugin_name}")
+                else:
+                    plugins[plugin_name] = plugin_config
+            config_data["plugins"] = plugins
 
         return Agent(**config_data)
 
