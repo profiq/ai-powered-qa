@@ -1,7 +1,7 @@
 import json
 from typing import Any
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 from openai import OpenAI
 
 from ai_powered_qa.components.interaction import Interaction
