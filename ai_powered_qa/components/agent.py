@@ -28,7 +28,6 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     # Agent state
     history_id: str = Field(default_factory=generate_short_id, exclude=True)
     history: list = Field(default=[], exclude=True)
-    request_history: list[str] = Field(default=[], exclude=True)
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -48,6 +47,17 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         if self.hash != new_hash:
             self.version += 1
             self.hash = new_hash
+
+    def add_plugin(self, plugin: Plugin):
+        self.plugins[plugin.name] = plugin
+        self._maybe_increment_version()
+
+    def _get_tools_from_plugins(self) -> list[dict]:
+        tools = []
+        p: Plugin
+        for p in self.plugins.values():
+            tools.extend(p.tools)
+        return tools
 
     def generate_interaction(self, user_prompt: str = None, model=None) -> Interaction:
         model = model or self.model
@@ -76,11 +86,8 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             agent_response=completion.choices[0].message,
         )
 
-    def add_plugin(self, plugin: Plugin):
-        self.plugins[plugin.name] = plugin
-        self._maybe_increment_version()
-
-    def commit_interaction(self, interaction: Interaction):
+    def commit_interaction(self, interaction: Interaction) -> Interaction:
+        interaction.committed = True
         user_prompt = interaction.user_prompt
         if user_prompt:
             self.history.append({"role": "user", "content": user_prompt})
@@ -90,9 +97,8 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         self.history.append(agent_response.model_dump(exclude_unset=True))
 
         if agent_response.tool_calls:
+            tool_responses = []
             for tool_call in agent_response.tool_calls:
-                print(f"tool_call: ", tool_call, "\n")
-
                 p: Plugin
                 for p in self.plugins.values():
                     # iterate all plugins until the plugin with correct tool is found
@@ -106,20 +112,23 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
                     raise Exception(
                         f"Tool {tool_call.function.name} not found in any plugin!"
                     )
-                self.history.append(
+                tool_responses.append(
                     {
                         "role": "tool",
                         "content": str(result),
                         "tool_call_id": tool_call.id,
                     }
                 )
+            interaction.tool_responses = tool_responses
+            self.history.extend(tool_responses)
+        return interaction
 
-    def _get_tools_from_plugins(self) -> list[dict]:
-        tools = []
+    def reset_history(self):
+        self.history = []
+        self.history_id = generate_short_id()
         p: Plugin
         for p in self.plugins.values():
-            tools.extend(p.tools)
-        return tools
+            p.reset_history(self.history)
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]

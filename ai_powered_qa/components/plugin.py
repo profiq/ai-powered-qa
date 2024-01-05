@@ -105,6 +105,9 @@ class Plugin(BaseModel, ABC):
                 required_params.append(param_name)
         return required_params
 
+    def reset_history(self, history):
+        pass
+
 
 class RandomNumberPlugin(Plugin):
     name: str = "RandomNumberPlugin"

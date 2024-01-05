@@ -1,7 +1,13 @@
-from ai_powered_qa.components.plugin import Plugin, tool
+import asyncio
+import json
 import playwright.sync_api
 import playwright.async_api
-import asyncio
+
+from ai_powered_qa.components.plugin import Plugin, tool
+from ai_powered_qa.components.utils import (
+    strip_html_to_structure,
+    amark_invisible_elements,
+)
 
 
 class PlaywrightPlugin(Plugin):
@@ -22,6 +28,18 @@ class PlaywrightPlugin(Plugin):
         asyncio.set_event_loop(self._loop)
         return self._loop.run_until_complete(coroutine)
 
+    @property
+    def context_message(self) -> str:
+        html = self.run_async(self._get_page_content())
+        return f"Current page content:\n\n ```\n{html}\n```"
+
+    async def _get_page_content(self):
+        page = await self.ensure_page()
+        # await amark_invisible_elements(page)
+        html_content = await page.content()
+        stripped_html = strip_html_to_structure(html_content)
+        return stripped_html
+
     @tool
     def navigate_to_url(self, url: str):
         """
@@ -35,7 +53,7 @@ class PlaywrightPlugin(Plugin):
         page = await self.ensure_page()
         try:
             response = await page.goto(url)
-        except Exception as e:
+        except Exception:
             return f"Unable to navigate to {url}."
 
         return f"Navigating to {url} returned status code {response.status if response else 'unknown'}"
@@ -97,7 +115,7 @@ class PlaywrightPlugin(Plugin):
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:
             self._playwright = await playwright.async_api.async_playwright().start()
-            self._browser = await self._playwright.chromium.launch()
+            self._browser = await self._playwright.chromium.launch(headless=False)
             self._page = await self._browser.new_page()
         return self._page
 
@@ -111,3 +129,16 @@ class PlaywrightPlugin(Plugin):
             await self._browser.close()
         if self._playwright:
             await self._playwright.stop()
+
+    def reset_history(self, history):
+        self.close()
+        self._playwright = None
+        self._browser = None
+        self._page = None
+        for message in history:
+            if message["role"] == "tool":
+                for tool_call in message["tool_calls"]:
+                    self.call_tool(
+                        tool_call["function"]["name"],
+                        **json.loads(tool_call["function"]["arguments"]),
+                    )

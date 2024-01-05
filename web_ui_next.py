@@ -1,8 +1,36 @@
 import json
 import streamlit as st
 
-from ai_powered_qa.components.agent import Agent
+from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
+
+SYSTEM_MESSAGE_KEY = "agent_system_message"
+
+
+@st.cache_resource
+def get_agent_store():
+    return AgentStore(
+        "agents",
+        name_to_plugin_class={
+            "PlaywrightPlugin": PlaywrightPlugin,
+        },
+    )
+
+
+agent_store = get_agent_store()
+
+
+@st.cache_resource
+def get_agent(agent_name):
+    new_agent = agent_store.load_agent(
+        agent_name, default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}}
+    )
+    st.session_state[SYSTEM_MESSAGE_KEY] = new_agent.system_message
+    return new_agent
+
+
+agent_name = st.text_input("Agent name", value="test_agent")
+agent = get_agent(agent_name)
 
 
 def on_commit(interaction):
@@ -16,33 +44,15 @@ def on_commit(interaction):
             tool_call.function.arguments = st.session_state[f"{tool_call.id}_arguments"]
             del st.session_state[f"{tool_call.id}_arguments"]
 
-    agent.commit_interaction(interaction=interaction)
+    agent_store.save_interaction(
+        agent, agent.commit_interaction(interaction=interaction)
+    )
+    agent_store.save_history(agent)
 
 
-agent_name = st.text_input("Agent name", value="test_agent")
-
-
-@st.cache_resource
-def get_playwright_plugin():
-    return PlaywrightPlugin()
-
-
-@st.cache_resource
-def get_agent(agent_name, _playwright_plugin):
-    agent = Agent(agent_name=agent_name)
-    agent.add_plugin(_playwright_plugin)
-    return agent
-
-
-playwright_plugin = get_playwright_plugin()
-
-agent = get_agent(agent_name, playwright_plugin)
-
-
-system_message_key = "agent_system_message"
-if not system_message_key in st.session_state:
-    st.session_state[system_message_key] = agent.system_message
 agent.system_message = st.text_input("System message", key="agent_system_message")
+
+agent_store.save_agent(agent)
 
 
 for message in agent.history:
@@ -72,8 +82,22 @@ if last_message is None or last_message["role"] == "assistant":
         if not user_message_content:
             st.stop()
 
+try:
+    interaction = agent.generate_interaction(user_message_content)
+except Exception as e:
+    st.write(e)
+    st.stop()
 
-interaction = agent.generate_interaction(user_message_content)
+context_message = (
+    interaction.request_params["messages"][-2]
+    if interaction.user_prompt
+    else interaction.request_params["messages"][-1]
+)
+
+with st.chat_message("user"):
+    st.write(context_message["content"])
+
+agent_store.save_interaction(agent, interaction)
 
 agent_response = interaction.agent_response.model_dump()
 
@@ -91,7 +115,6 @@ for tool_id, tool_info in tool_calls.items():
     st.session_state[f"{tool_id}_name"] = tool_info["name"]
     st.session_state[f"{tool_id}_arguments"] = tool_info["arguments"]
 
-
 with st.chat_message("assistant"):
     with st.form("agent_message"):
         st.text_area(
@@ -108,3 +131,5 @@ with st.chat_message("assistant"):
             on_click=on_commit,
             args=(interaction,),
         )
+
+st.button("Reset history", on_click=agent.reset_history)
