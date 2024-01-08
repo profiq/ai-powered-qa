@@ -136,7 +136,7 @@ class PlaywrightPlugin(Plugin):
         self._browser = None
         self._page = None
         for message in history:
-            if message["role"] == "tool":
+            if "tool_calls" in message:
                 for tool_call in message["tool_calls"]:
                     self.call_tool(
                         tool_call["function"]["name"],

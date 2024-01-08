@@ -26,7 +26,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     plugins: dict[str, Plugin] = Field(default_factory=dict)
 
     # Agent state
-    history_id: str = Field(default_factory=generate_short_id, exclude=True)
+    history_name: str = Field(default_factory=generate_short_id, exclude=True)
     history: list = Field(default=[], exclude=True)
 
     def __init__(self, **data):
@@ -123,9 +123,9 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             self.history.extend(tool_responses)
         return interaction
 
-    def reset_history(self):
-        self.history = []
-        self.history_id = generate_short_id()
+    def reset_history(self, history: list = [], history_name: str = None):
+        self.history = history
+        self.history_name = history_name or generate_short_id()
         p: Plugin
         for p in self.plugins.values():
             p.reset_history(self.history)
