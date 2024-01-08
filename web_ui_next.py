@@ -1,5 +1,5 @@
 import json
-from pathlib import Path
+import os
 
 import streamlit as st
 
@@ -99,10 +99,8 @@ context_message = (
 with st.chat_message("user"):
     st.write(context_message["content"])
 
-    screenshot_path = Path(
-        f"agents/{agent.agent_name}/{agent.history_id}/page_state.png"
-    )
-    if screenshot_path.exists():
+    screenshot_path = f"agents/{agent.agent_name}/{agent.history_id}/page_state.png"
+    if os.path.exists(screenshot_path):
         st.image(screenshot_path)
 
 agent_store.save_interaction(agent, interaction)
