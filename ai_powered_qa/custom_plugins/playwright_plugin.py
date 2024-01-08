@@ -35,7 +35,7 @@ class PlaywrightPlugin(Plugin):
 
     async def _get_page_content(self):
         page = await self.ensure_page()
-        # await amark_invisible_elements(page)
+        await amark_invisible_elements(page)
         html_content = await page.content()
         stripped_html = strip_html_to_structure(html_content)
         return stripped_html

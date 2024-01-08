@@ -1,6 +1,7 @@
 import hashlib
 import random
 import string
+
 from bs4 import BeautifulSoup, Tag
 
 
@@ -8,12 +9,14 @@ async def ais_element_in_viewport(element, viewport_width, viewport_height):
     bounding_box = await element.bounding_box()
     if not bounding_box:
         return False
+
     x, y, width, height = (
         bounding_box["x"],
         bounding_box["y"],
         bounding_box["width"],
         bounding_box["height"],
     )
+
     return (
         x >= 0
         and y >= 0
@@ -23,15 +26,16 @@ async def ais_element_in_viewport(element, viewport_width, viewport_height):
 
 
 async def amark_invisible_elements(page):
-    # Get viewport size
     viewport_size = page.viewport_size
     viewport_width = viewport_size["width"]
     viewport_height = viewport_size["height"]
 
-    body = page.locator("body")
-    for element in await body.all():
-        # TODO: mark visible elements too?
-        if not await ais_element_in_viewport(element, viewport_width, viewport_height):
+    all_elements = await page.locator("*").all()
+    for element in all_elements:
+        element_in_viewport = await ais_element_in_viewport(
+            element, viewport_width, viewport_height
+        )
+        if not element_in_viewport:
             await element.evaluate('el => el.setAttribute("data-visible", "false")')
 
 
@@ -92,8 +96,14 @@ def clean_attributes(tag):
         "aria-labelledby",
         "aria-describedby",
         "aria-controls",
+        "data-visible",
+        "height",
+        "width",
+        "transform",
     ]
-    tag.attrs = {k: v for k, v in tag.attrs.items() if k not in blocked_attrs}
+
+    if tag.attrs:
+        tag.attrs = {k: v for k, v in tag.attrs.items() if k not in blocked_attrs}
 
 
 def remove_specific_tags(soup):
@@ -117,6 +127,9 @@ def remove_elements_by_data_attribute(soup, attribute, value):
 
 
 def strip_html_recursively(soup):
+    if not isinstance(soup, Tag):
+        return
+
     clean_attributes(soup)
     for child in soup.find_all(
         True, recursive=False
@@ -137,10 +150,41 @@ def remove_nonrelevant_tags(soup):
         tag.unwrap()
 
 
+def remove_invisible_elements(soup: BeautifulSoup) -> bool:
+    """
+    Removes an element if it has no children and is invisible or if all its
+    children are invisible. Returns True if the element was invisible and was
+    removed, False otherwise.
+    """
+    has_tag_children = False
+
+    for child in soup.children:
+        if isinstance(child, Tag):
+            has_tag_children = True
+
+    if not has_tag_children:
+        if soup.get("data-visible") == "false":
+            soup.decompose()
+            return True
+        else:
+            return False
+    else:
+        all_tag_children_invisible = True
+        for child in soup.children:
+            if isinstance(child, Tag):
+                if not remove_invisible_elements(child):
+                    all_tag_children_invisible = False
+        if all_tag_children_invisible:
+            soup.decompose()
+            return True
+
+
 def strip_html_to_structure(html_content):
     soup = BeautifulSoup(html_content, "html.parser")
+    if soup.body is None or not soup.body.contents:
+        return ""
     remove_specific_tags(soup)  # Remove specific tags before processing
-    remove_elements_by_data_attribute(soup, "data-visible", "false")
+    remove_invisible_elements(soup)
     strip_html_recursively(soup)
     remove_nonrelevant_tags(soup)
 
