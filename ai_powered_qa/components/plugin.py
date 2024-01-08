@@ -1,13 +1,11 @@
 import inspect
 import json
 import random
-from typing import Any
-import docstring_parser
-
-
 from abc import ABC
-from pydantic import BaseModel, PrivateAttr
+from typing import Any
 
+import docstring_parser
+from pydantic import BaseModel, PrivateAttr
 
 TYPE_MAP = {
     "int": "integer",
@@ -106,6 +104,9 @@ class Plugin(BaseModel, ABC):
         return required_params
 
     def reset_history(self, history):
+        pass
+
+    def screenshot(self, agent, agent_id):
         pass
 
 

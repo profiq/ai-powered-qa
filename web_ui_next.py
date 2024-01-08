@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+
 import streamlit as st
 
 from ai_powered_qa.components.agent_store import AgentStore
@@ -96,6 +98,12 @@ context_message = (
 
 with st.chat_message("user"):
     st.write(context_message["content"])
+
+    screenshot_path = Path(
+        f"agents/{agent.agent_name}/{agent.history_id}/page_state.png"
+    )
+    if screenshot_path.exists():
+        st.image(screenshot_path)
 
 agent_store.save_interaction(agent, interaction)
 

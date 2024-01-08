@@ -1,8 +1,9 @@
 import json
 from typing import Any
+
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
 from openai import OpenAI
+from pydantic import BaseModel, Field
 
 from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
@@ -132,4 +133,9 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
+
+        # create screenshot of context
+        p: Plugin
+        for p in self.plugins.values():
+            p.screenshot(self.agent_name, self.history_id)
         return "\n\n".join(contexts)

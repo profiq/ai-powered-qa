@@ -1,12 +1,12 @@
 import asyncio
 import json
-import playwright.sync_api
+
 import playwright.async_api
+import playwright.sync_api
 
 from ai_powered_qa.components.plugin import Plugin, tool
 from ai_powered_qa.components.utils import (
     strip_html_to_structure,
-    amark_invisible_elements,
 )
 
 
@@ -142,3 +142,11 @@ class PlaywrightPlugin(Plugin):
                         tool_call["function"]["name"],
                         **json.loads(tool_call["function"]["arguments"]),
                     )
+
+    def screenshot(self, agent=None, agent_id=None):
+        if agent_id and agent:
+            self.run_async(self._screenshot(agent, agent_id))
+
+    async def _screenshot(self, agent, agent_id):
+        page = await self.ensure_page()
+        await page.screenshot(path=f"agents/{agent}/{agent_id}/page_state.png")
