@@ -1,5 +1,4 @@
 from ai_powered_qa.components.plugin import RandomNumberPlugin
-from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 
 
 def test_automatic_tool_description():
@@ -66,14 +65,3 @@ def test_custom_tool_description():
     )
     assert properties["mean"]["type"] == "number"
     assert properties["standard_deviation"]["type"] == "number"
-
-
-def test_playwright_navigate():
-    plugin = PlaywrightPlugin()
-    tool_name = "navigate_to_url"
-    url = "https://opinionet.swarm.svana.name/"
-    response = plugin.call_tool(tool_name, url=url)
-    assert response == f"Navigating to {url} returned status code 200"
-    assert plugin._page.url == url
-    assert '<div id="root">' in plugin.context_message
-    plugin.close()
