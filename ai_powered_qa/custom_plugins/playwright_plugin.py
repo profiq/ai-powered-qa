@@ -177,7 +177,7 @@ def _clean_attributes(html: str) -> str:
     regexes = [
         r'class="[^"]*"',
         r'style="[^"]*"',
-        r'data-[a-zA-Z\-]+="[^"]*"',
+        r'data-(?!test)[a-zA-Z\-]+="[^"]*"',
         r'aria-[a-zA-Z\-]+="[^"]*"',
         r'role="[^"]*"',
         r'grow="[^"]*"',
