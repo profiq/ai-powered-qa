@@ -150,7 +150,6 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         if user_prompt:
             messages.append({"role": "user", "content": user_prompt})
 
-        print(count_tokens(context_message, model))
         return messages
 
     def _generate_context_message(self):
