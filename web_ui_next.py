@@ -77,7 +77,15 @@ history_name = st.text_input(
 if not history_name:
     st.stop()
 
-st.write(agent.history_name)
+
+def on_clear_history():
+    history_name = st.session_state[HISTORY_NAME_KEY]
+    agent.reset_history([], history_name)
+    agent_store.save_history(agent)
+
+
+if len(agent.history) > 0:
+    st.button("Clear history", on_click=on_clear_history)
 
 for message in agent.history:
     with st.chat_message(message["role"]):
@@ -155,12 +163,3 @@ with st.chat_message("assistant"):
             on_click=on_commit,
             args=(interaction,),
         )
-
-
-def on_reset_history():
-    history_name = st.session_state[HISTORY_NAME_KEY]
-    agent.reset_history([], history_name)
-    agent_store.save_history(agent)
-
-
-st.button("Reset history", on_click=on_reset_history)
