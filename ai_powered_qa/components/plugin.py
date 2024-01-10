@@ -106,9 +106,6 @@ class Plugin(BaseModel, ABC):
     def reset_history(self, history):
         pass
 
-    def screenshot(self, agent, agent_id):
-        pass
-
 
 class RandomNumberPlugin(Plugin):
     name: str = "RandomNumberPlugin"
