@@ -179,6 +179,7 @@ def _clean_attributes(html: str) -> str:
         r'style="[^"]*"',
         r'data-(?!test)[a-zA-Z\-]+="[^"]*"',
         r'aria-[a-zA-Z\-]+="[^"]*"',
+        r'on[a-zA-Z\-]+="[^"]*"',
         r'role="[^"]*"',
         r'grow="[^"]*"',
         r'transform="[^"]*"',
