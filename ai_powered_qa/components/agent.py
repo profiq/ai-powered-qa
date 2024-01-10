@@ -6,7 +6,8 @@ from openai import OpenAI
 
 from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
-from .utils import generate_short_id, md5
+from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
+from .utils import generate_short_id, md5, count_tokens
 
 load_dotenv()
 
@@ -59,21 +60,17 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             tools.extend(p.tools)
         return tools
 
-    def generate_interaction(self, user_prompt: str = None, model=None) -> Interaction:
+    def generate_interaction(
+        self, user_prompt: str = None, model=None, max_response_tokens=1000
+    ) -> Interaction:
         model = model or self.model
-        _messages = [
-            {"role": "system", "content": self.system_message},
-            *self.history,
-        ]
-
-        _messages.append({"role": "user", "content": self._generate_context_message()})
-
-        if user_prompt:
-            _messages.append({"role": "user", "content": user_prompt})
-
+        max_history_tokens = MODEL_TOKEN_LIMITS[model] - max_response_tokens
+        messages = self._get_messages_for_completion(
+            user_prompt, model, max_history_tokens
+        )
         request_params = {
             "model": model,
-            "messages": _messages,
+            "messages": messages,
         }
         tools = self._get_tools_from_plugins()
         if len(tools) > 0:
@@ -129,6 +126,32 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         p: Plugin
         for p in self.plugins.values():
             p.reset_history(self.history)
+
+    def _get_messages_for_completion(
+        self, user_prompt: str | None, model: str, max_tokens: int
+    ) -> list[dict]:
+        messages = [{"role": "system", "content": self.system_message}]
+        context_message = self._generate_context_message()
+
+        total_tokens = count_tokens(self.system_message, model)
+        total_tokens += count_tokens(context_message, model)
+        if user_prompt:
+            total_tokens += count_tokens(user_prompt, model)
+
+        for i in range(len(self.history)):
+            history_item = self.history[-i - 1]
+            content_length = count_tokens(history_item["content"], model)
+            if content_length + total_tokens > max_tokens:
+                break
+            total_tokens += content_length
+            messages.insert(1, history_item)
+
+        messages.append({"role": "user", "content": context_message})
+        if user_prompt:
+            messages.append({"role": "user", "content": user_prompt})
+
+        print(count_tokens(context_message, model))
+        return messages
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
