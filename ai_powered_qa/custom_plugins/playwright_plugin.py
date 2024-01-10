@@ -1,13 +1,12 @@
 import asyncio
 import json
+import re
 
 import playwright.async_api
 import playwright.sync_api
+from bs4 import BeautifulSoup
 
 from ai_powered_qa.components.plugin import Plugin, tool
-from ai_powered_qa.components.utils import (
-    strip_html_to_structure,
-)
 
 
 class PlaywrightPlugin(Plugin):
@@ -29,15 +28,22 @@ class PlaywrightPlugin(Plugin):
         return self._loop.run_until_complete(coroutine)
 
     @property
+    def system_message(self) -> str:
+        return """
+            You can use Playwright to interact with web pages. You always get 
+            the HTML content of the current page. There is one caveat though:
+            You need to handle all <d> tags as if they were <div> tags.
+        """
+
+    @property
     def context_message(self) -> str:
         html = self.run_async(self._get_page_content())
         return f"Current page content:\n\n ```\n{html}\n```"
 
     async def _get_page_content(self):
         page = await self.ensure_page()
-        # await amark_invisible_elements(page)
         html_content = await page.content()
-        stripped_html = strip_html_to_structure(html_content)
+        stripped_html = clean_html(html_content)
         return stripped_html
 
     @tool
@@ -82,6 +88,10 @@ class PlaywrightPlugin(Plugin):
         playwright_strict: bool = False
         page = await self.ensure_page()
         try:
+            selector = _selector_effective(selector, index)
+            element_exists = await page.is_visible(selector)
+            if not element_exists:
+                return f"Unable to click on element '{selector}' as it does not exist"
             await page.click(
                 selector=_selector_effective(selector, index),
                 strict=playwright_strict,
@@ -150,3 +160,72 @@ class PlaywrightPlugin(Plugin):
     async def _screenshot(self, agent, agent_id):
         page = await self.ensure_page()
         await page.screenshot(path=f"agents/{agent}/{agent_id}/page_state.png")
+
+
+def clean_html(html_content):
+    """
+    Cleans the web page HTML content from irrelevant tags and attributes
+    to save tokens.
+
+    There are two controversial actions here:
+    - We replace <div> with <d> as they are very common.
+    - The _clean_attributes function removes all `data-` attributes
+    """
+    html_clean = _clean_attributes(html_content)
+    html_clean = re.sub(r"<div[\s]*>[\s]*</div>", "", html_clean)
+    html_clean = re.sub(r"<!--[\s\S]*?-->", "", html_clean)
+    html_clean = html_clean.replace("<div", "<d").replace("</div>", "</d>")
+    soup = BeautifulSoup(html_clean, "html.parser")
+    _unwrap_single_child(soup)
+    _remove_useless_tags(soup)
+    return str(soup)
+
+
+def _clean_attributes(html: str) -> str:
+    regexes = [
+        r'class="[^"]*"',
+        r'style="[^"]*"',
+        r'data-(?!test)[a-zA-Z\-]+="[^"]*"',
+        r'aria-[a-zA-Z\-]+="[^"]*"',
+        r'on[a-zA-Z\-]+="[^"]*"',
+        r'role="[^"]*"',
+        r'grow="[^"]*"',
+        r'transform="[^"]*"',
+        r'height="[^"]*"',
+        r'width="[^"]*"',
+        r'jsaction="[^"]*"',
+        r'jscontroller="[^"]*"',
+        r'jsrenderer="[^"]*"',
+        r'jsmodel="[^"]*"',
+        r'c-wiz="[^"]*"',
+        r'jsshadow="[^"]*"',
+        r'jsslot="[^"]*"',
+        r'dir"[^"]*"',
+    ]
+    for regex in regexes:
+        html = re.sub(regex, "", html)
+
+    return html
+
+
+def _unwrap_single_child(soup: BeautifulSoup):
+    """
+    Unwraping means removing a tag but keeping its children. This can again
+    save some tokens.
+    """
+    for tag in soup.find_all(True):
+        if len(tag.contents) == 1 and not isinstance(tag.contents[0], str):
+            tag.unwrap()
+
+
+def _remove_useless_tags(soup):
+    tags_to_remove = [
+        "path",
+        "meta",
+        "link",
+        "noscript",
+        "script",
+        "style",
+    ]
+    for t in soup.find_all(tags_to_remove):
+        t.decompose()
