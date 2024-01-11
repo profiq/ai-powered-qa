@@ -1,5 +1,4 @@
 import json
-import os
 
 import streamlit as st
 
@@ -98,10 +97,7 @@ context_message = (
 
 with st.chat_message("user"):
     st.write(context_message["content"])
-    agent.plugins["PlaywrightPlugin"].screenshot(agent.agent_name, agent.history_id)
-    screenshot_path = f"agents/{agent.agent_name}/{agent.history_id}/page_state.png"
-    if os.path.exists(screenshot_path):
-        st.image(screenshot_path)
+    st.image(agent.plugins["PlaywrightPlugin"].buffer)
 
 agent_store.save_interaction(agent, interaction)
 

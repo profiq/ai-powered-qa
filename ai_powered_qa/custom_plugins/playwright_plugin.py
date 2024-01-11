@@ -15,12 +15,18 @@ class PlaywrightPlugin(Plugin):
     _playwright: playwright.async_api.Playwright
     _browser: playwright.async_api.Browser
     _page: playwright.async_api.Page
+    _buffer: bytes
+
+    @property
+    def buffer(self) -> bytes:
+        return bytes(self._buffer)
 
     def __init__(self, **data):
         super().__init__(**data)
         self._playwright = None
         self._browser = None
         self._page = None
+        self._buffer = None
         self._loop = asyncio.new_event_loop()
 
     def run_async(self, coroutine):
@@ -38,6 +44,7 @@ class PlaywrightPlugin(Plugin):
     @property
     def context_message(self) -> str:
         html = self.run_async(self._get_page_content())
+        self.screenshot()
         return f"Current page content:\n\n ```\n{html}\n```"
 
     async def _get_page_content(self):
@@ -153,13 +160,12 @@ class PlaywrightPlugin(Plugin):
                         **json.loads(tool_call["function"]["arguments"]),
                     )
 
-    def screenshot(self, agent=None, agent_id=None):
-        if agent_id and agent:
-            self.run_async(self._screenshot(agent, agent_id))
+    def screenshot(self):
+        self.run_async(self._screenshot())
 
-    async def _screenshot(self, agent, agent_id):
+    async def _screenshot(self):
         page = await self.ensure_page()
-        await page.screenshot(path=f"agents/{agent}/{agent_id}/page_state.png")
+        self._buffer = await page.screenshot()
 
 
 def clean_html(html_content):
