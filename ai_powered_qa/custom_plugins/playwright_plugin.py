@@ -179,19 +179,22 @@ def clean_html(html_content):
     """
     html_clean = _clean_attributes(html_content)
     html_clean = re.sub(r"<div[\s]*>[\s]*</div>", "", html_clean)
+    html_clean = re.sub(r"<span[\s]*>[\s]*</span>", "", html_clean)
     html_clean = re.sub(r"<!--[\s\S]*?-->", "", html_clean)
     html_clean = html_clean.replace("<div", "<d").replace("</div>", "</d>")
     soup = BeautifulSoup(html_clean, "html.parser")
     _unwrap_single_child(soup)
     _remove_useless_tags(soup)
-    return str(soup)
+    html_clean = str(soup)
+    html_clean = re.sub(r"[\n]{2,}", "\n", html_clean)
+    return html_clean
 
 
 def _clean_attributes(html: str) -> str:
     regexes = [
         r'class="[^"]*"',
         r'style="[^"]*"',
-        r'data-(?!test)[a-zA-Z\-]+="[^"]*"',
+        r'data-(?!test)[a-zA-Z0-9-]+="[^"]*"',
         r'aria-[a-zA-Z\-]+="[^"]*"',
         r'on[a-zA-Z\-]+="[^"]*"',
         r'role="[^"]*"',
@@ -199,6 +202,14 @@ def _clean_attributes(html: str) -> str:
         r'transform="[^"]*"',
         r'height="[^"]*"',
         r'width="[^"]*"',
+        r'version="[^"]*"',
+        r'value="[^"]*"',
+        r'values="[^"]*"',
+        r'loading="[^"]*"',
+        r'decoding="[^"]*"',
+        r'srcset="[^"]*"',
+        r'sizes="[^"]*"',
+        r'fill="[^"]*"',
         r'jsaction="[^"]*"',
         r'jscontroller="[^"]*"',
         r'jsrenderer="[^"]*"',
@@ -207,6 +218,9 @@ def _clean_attributes(html: str) -> str:
         r'jsshadow="[^"]*"',
         r'jsslot="[^"]*"',
         r'dir"[^"]*"',
+        r'view[bB]ox="[^"]*"',
+        r'media="[^"]*"',
+        r'xmlns="[^"]*"',
     ]
     for regex in regexes:
         html = re.sub(regex, "", html)
@@ -232,6 +246,7 @@ def _remove_useless_tags(soup):
         "noscript",
         "script",
         "style",
+        "iframe",
     ]
     for t in soup.find_all(tags_to_remove):
         t.decompose()

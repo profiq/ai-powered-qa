@@ -67,6 +67,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             *self.history,
         ]
 
+        print(self._generate_context_message())
         _messages.append({"role": "user", "content": self._generate_context_message()})
 
         if user_prompt:
