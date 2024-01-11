@@ -71,7 +71,7 @@ class AgentStore:
     def save_history(self, agent: Agent):
         file_name = f"full_history.json"
         history_directory = os.path.join(
-            self._directory, agent.agent_name, agent.history_id
+            self._directory, agent.agent_name, agent.history_name
         )
         file_path = os.path.join(history_directory, file_name)
 
@@ -81,11 +81,24 @@ class AgentStore:
         with open(file_path, "w") as file:
             file.write(json.dumps(agent.history, indent=4))
 
+    def load_history(self, agent: Agent, history_name: str = None):
+        file_name = f"full_history.json"
+        history_directory = os.path.join(
+            self._directory, agent.agent_name, history_name
+        )
+        file_path = os.path.join(history_directory, file_name)
+
+        if not os.path.exists(file_path):
+            return []
+
+        with open(file_path, "r") as file:
+            return json.load(file)
+
     def save_interaction(self, agent: Agent, interaction: Interaction):
         num_of_messages = len(interaction.request_params["messages"])
         file_name = f"interaction_{num_of_messages}_{interaction.id}.json"
         history_directory = os.path.join(
-            self._directory, agent.agent_name, agent.history_id
+            self._directory, agent.agent_name, agent.history_name
         )
         file_path = os.path.join(history_directory, file_name)
 

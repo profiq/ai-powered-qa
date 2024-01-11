@@ -5,6 +5,7 @@ from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
+HISTORY_NAME_KEY = "history_name"
 
 
 @st.cache_resource
@@ -29,7 +30,9 @@ def get_agent(agent_name):
     return new_agent
 
 
-agent_name = st.text_input("Agent name", value="test_agent")
+sidebar = st.sidebar
+
+agent_name = sidebar.text_input("Agent name", value="test_agent")
 agent = get_agent(agent_name)
 
 
@@ -50,10 +53,39 @@ def on_commit(interaction):
     agent_store.save_history(agent)
 
 
-agent.system_message = st.text_input("System message", key="agent_system_message")
+agent.system_message = sidebar.text_input("System message", key=SYSTEM_MESSAGE_KEY)
 
 agent_store.save_agent(agent)
 
+
+def load_history():
+    if HISTORY_NAME_KEY not in st.session_state:
+        return
+
+    history_name = st.session_state[HISTORY_NAME_KEY]
+    if not history_name:
+        return
+
+    history = agent_store.load_history(agent, history_name)
+    agent.reset_history(history, history_name)
+
+
+history_name = st.text_input(
+    "History name", key=HISTORY_NAME_KEY, on_change=load_history
+)
+
+if not history_name:
+    st.stop()
+
+
+def on_clear_history():
+    history_name = st.session_state[HISTORY_NAME_KEY]
+    agent.reset_history([], history_name)
+    agent_store.save_history(agent)
+
+
+if len(agent.history) > 0:
+    st.button("Clear history", on_click=on_clear_history)
 
 for message in agent.history:
     with st.chat_message(message["role"]):
@@ -131,5 +163,3 @@ with st.chat_message("assistant"):
             on_click=on_commit,
             args=(interaction,),
         )
-
-st.button("Reset history", on_click=agent.reset_history)
