@@ -8,6 +8,7 @@ from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
 from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
 from .utils import generate_short_id, md5, count_tokens
+import yaml
 
 load_dotenv()
 
@@ -141,6 +142,16 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         for i in range(len(self.history)):
             history_item = self.history[-i - 1]
             content_length = count_tokens(history_item["content"], model)
+
+            if "tool_calls" in history_item:
+                content_length += count_tokens(
+                    yaml.dump(history_item["tool_calls"]), model
+                )
+                content_length += self._count_tokens_for_tool_responses(
+                    self.history[-i : -i - len(history_item["tool_calls"])], model
+                )
+                i += len(history_item["tool_calls"])
+
             if content_length + total_tokens > max_tokens:
                 break
             total_tokens += content_length
@@ -150,8 +161,17 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         if user_prompt:
             messages.append({"role": "user", "content": user_prompt})
 
+        print(messages[1])
+
         return messages
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
         return "\n\n".join(contexts)
+
+    @staticmethod
+    def _count_tokens_for_tool_responses(history: list, model: str) -> int:
+        total_tokens = 0
+        for history_item in history:
+            total_tokens += count_tokens(history_item["content"], model)
+        return total_tokens
