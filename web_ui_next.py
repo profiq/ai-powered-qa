@@ -1,4 +1,5 @@
 import json
+
 import streamlit as st
 
 from ai_powered_qa.components.agent_store import AgentStore
@@ -128,6 +129,7 @@ context_message = (
 
 with st.chat_message("user"):
     st.write(context_message["content"])
+    st.image(agent.plugins["PlaywrightPlugin"].buffer)
 
 agent_store.save_interaction(agent, interaction)
 
