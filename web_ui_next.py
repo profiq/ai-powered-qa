@@ -3,6 +3,7 @@ import json
 import streamlit as st
 
 from ai_powered_qa.components.agent_store import AgentStore
+from ai_powered_qa.components.agent import AVAILABLE_MODELS
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
@@ -54,8 +55,9 @@ def on_commit(interaction):
     agent_store.save_history(agent)
 
 
-agent.system_message = sidebar.text_area("System message", key=SYSTEM_MESSAGE_KEY)
-
+agent.model = sidebar.selectbox("Model", AVAILABLE_MODELS)
+agent.system_message = sidebar.text_area("System message", agent.system_message)
+generate_empty = sidebar.checkbox("Generate interaction even if user message is empty", False)
 agent_store.save_agent(agent)
 
 
@@ -120,6 +122,8 @@ if last_message is None or last_message["role"] == "assistant":
             key="user_message_content",
             label_visibility="collapsed",
         )
+        if not user_message_content and not generate_empty:
+            st.stop()
 
 try:
     interaction = agent.generate_interaction(
