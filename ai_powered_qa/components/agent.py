@@ -53,14 +53,16 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         self.plugins[plugin.name] = plugin
         self._maybe_increment_version()
 
-    def _get_tools_from_plugins(self) -> list[dict]:
+    def get_tools_from_plugins(self) -> list[dict]:
         tools = []
         p: Plugin
         for p in self.plugins.values():
             tools.extend(p.tools)
         return tools
 
-    def generate_interaction(self, user_prompt: str = None, model=None) -> Interaction:
+    def generate_interaction(
+        self, user_prompt: str = None, model=None, tool_choice: str = "auto"
+    ) -> Interaction:
         model = model or self.model
         _messages = [
             {"role": "system", "content": self.system_message},
@@ -75,8 +77,16 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         request_params = {
             "model": model,
             "messages": _messages,
+            "tool_choice": (
+                tool_choice
+                if tool_choice in ["auto", "none"]
+                else {"type": "function", "function": {"name": tool_choice}}
+            ),
         }
-        tools = self._get_tools_from_plugins()
+
+        print(request_params)
+
+        tools = self.get_tools_from_plugins()
         if len(tools) > 0:
             request_params["tools"] = tools
         completion = self.client.chat.completions.create(**request_params)
