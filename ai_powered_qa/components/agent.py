@@ -12,6 +12,12 @@ from .utils import generate_short_id, md5
 load_dotenv()
 
 
+AVAILABLE_MODELS = [
+    "gpt-3.5-turbo-1106",
+    "gpt-4-1106-preview"
+]
+
+
 class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     # Agent identifiers
     agent_name: str
@@ -90,8 +96,6 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
                 else {"type": "function", "function": {"name": tool_choice}}
             ),
         }
-
-        print(request_params)
 
         tools = self.get_tools_from_plugins()
         if len(tools) > 0:
