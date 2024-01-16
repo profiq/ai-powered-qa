@@ -40,6 +40,12 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         if name not in ["hash", "version"]:
             self._maybe_increment_version()
 
+    def generate_system_message(self):
+        system_messages = [f"{self.system_message}"]
+        for p in self.plugins.values():
+            system_messages.append(p.system_message)
+        return "\n\n".join(system_messages)
+
     def _compute_hash(self):
         return md5(self.model_dump_json(exclude=["hash", "version"]))
 
@@ -63,11 +69,11 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     def generate_interaction(self, user_prompt: str = None, model=None) -> Interaction:
         model = model or self.model
         _messages = [
-            {"role": "system", "content": self.system_message},
+            {"role": "system", "content": self.generate_system_message()},
             *self.history,
         ]
 
-        print(self._generate_context_message())
+        print(self.generate_system_message())
         _messages.append({"role": "user", "content": self._generate_context_message()})
 
         if user_prompt:

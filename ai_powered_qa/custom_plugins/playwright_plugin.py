@@ -11,6 +11,7 @@ from ai_powered_qa.components.plugin import Plugin, tool
 
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
+    part_length: str = 10000
 
     _playwright: playwright.async_api.Playwright
     _browser: playwright.async_api.Browser
@@ -28,6 +29,7 @@ class PlaywrightPlugin(Plugin):
         self._page = None
         self._buffer = None
         self._loop = asyncio.new_event_loop()
+        self._part = 0
 
     def run_async(self, coroutine):
         asyncio.set_event_loop(self._loop)
@@ -39,13 +41,23 @@ class PlaywrightPlugin(Plugin):
             You can use Playwright to interact with web pages. You always get 
             the HTML content of the current page. There is one caveat though:
             You need to handle all <d> tags as if they were <div> tags.
+
+            When working with HTML content you can use the `move_to_html_part`
+            tool to move to a specific part of the HTML content. Alway take a short note about
+            what the part contains before moving to a different part, 
+            because the HTML content won't be visible if you move to another part.
         """
 
     @property
     def context_message(self) -> str:
         html = self.run_async(self._get_page_content())
+<<<<<<< Updated upstream
         self.screenshot()
         return f"Current page content:\n\n ```\n{html}\n```"
+=======
+        part, max_parts = self._get_html_part(html)
+        return f"Current page content:\n\n ```\n{part}\n``` \n\n Part {self._part + 1} of {max_parts}."
+>>>>>>> Stashed changes
 
     async def _get_page_content(self):
         page = await self.ensure_page()
@@ -129,6 +141,17 @@ class PlaywrightPlugin(Plugin):
             return f"Unable to fill up text on element '{selector}'."
         return f"Text input on the element by text, {selector}, was successfully performed."
 
+    @tool
+    def move_to_html_part(self, part: int):
+        """
+        Moves to the HTML part at the given index. We split the HTML content of the website
+        into multiple smaller parts to avoid reaching the token limit
+
+        :param int part: Index of the HTML part to move to (starts at 1)
+        """
+        self._part = part - 1
+        return f"Moved to HTML part {part}"
+
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:
             self._playwright = await playwright.async_api.async_playwright().start()
@@ -160,12 +183,36 @@ class PlaywrightPlugin(Plugin):
                         **json.loads(tool_call["function"]["arguments"]),
                     )
 
+<<<<<<< Updated upstream
     def screenshot(self):
         self.run_async(self._screenshot())
 
     async def _screenshot(self):
         page = await self.ensure_page()
         self._buffer = await page.screenshot()
+=======
+    def _get_html_part(self, html: str) -> str:
+        """
+        Splits the HTML content into parts of about self.part_length characters.
+        Always performs a split at a tag start character.
+
+        After HTML is split it returns the part at intex self._part
+
+        We split the HTML content into parts to avoid reaching the token limit
+        """
+        if len(html) < self.part_length:
+            return html, 1
+        parts = []
+        current_part = ""
+        for char in html:
+            if char == "<" and len(current_part) > self.part_length:
+                parts.append(current_part)
+                current_part = "<"
+            else:
+                current_part += char
+        parts.append(current_part)
+        return parts[self._part], len(parts)
+>>>>>>> Stashed changes
 
 
 def clean_html(html_content):
