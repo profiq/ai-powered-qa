@@ -154,17 +154,18 @@ class PlaywrightPlugin(Plugin):
 
         if action == "is_visible":
             state = await page.locator(selector).is_visible()
-            if state:
-                return f"{selector} is visible in context, action passed."
-            return f"{selector} is not visible in context, action passed."
-        if action == "contain_text":
+            result_message = f"{selector} is {'visible' if state else 'not visible'} in context."
+        elif action == "contain_text":
             text = await page.inner_text(selector)
             if text == "":
                 text = await page.locator(selector).get_attribute("value")
-            if value == text:
-                return f"{selector} contain '{value}', action passed."
-            return f"{selector} contain '{text}' not '{value}', action passed."
-        return "Not implemented action"
+            result_message = (
+                f"{selector} {'contains' if value == text else 'does not contain'} '{value}', "
+                f"actual value: '{text}'."
+            )
+        else:
+            return "Not implemented action"
+        return f"Action '{action}' was successfully performed: {result_message}"
 
 
     async def ensure_page(self) -> playwright.async_api.Page:
