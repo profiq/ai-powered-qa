@@ -1,8 +1,9 @@
 import json
 from typing import Any
+
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
 from openai import OpenAI
+from pydantic import BaseModel, Field
 
 from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
@@ -11,6 +12,9 @@ from .utils import generate_short_id, md5, count_tokens
 import yaml
 
 load_dotenv()
+
+
+AVAILABLE_MODELS = ["gpt-3.5-turbo-1106", "gpt-4-1106-preview"]
 
 
 class Agent(BaseModel, validate_assignment=True, extra="ignore"):
@@ -54,7 +58,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         self.plugins[plugin.name] = plugin
         self._maybe_increment_version()
 
-    def _get_tools_from_plugins(self) -> list[dict]:
+    def get_tools_from_plugins(self) -> list[dict]:
         tools = []
         p: Plugin
         for p in self.plugins.values():
@@ -62,7 +66,11 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         return tools
 
     def generate_interaction(
-        self, user_prompt: str = None, model=None, max_response_tokens=1000
+        self,
+        user_prompt: str = None,
+        model=None,
+        tool_choice: str = "auto",
+        max_response_tokens=1000,
     ) -> Interaction:
         model = model or self.model
         max_history_tokens = MODEL_TOKEN_LIMITS[model] - max_response_tokens
@@ -72,8 +80,14 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         request_params = {
             "model": model,
             "messages": messages,
+            "tool_choice": (
+                tool_choice
+                if tool_choice in ["auto", "none"]
+                else {"type": "function", "function": {"name": tool_choice}}
+            ),
         }
-        tools = self._get_tools_from_plugins()
+
+        tools = self.get_tools_from_plugins()
         if len(tools) > 0:
             request_params["tools"] = tools
         completion = self.client.chat.completions.create(**request_params)

@@ -1,23 +1,12 @@
+.env
+
 # screenshot folder
 screenshot
 
-# folder with generated tests files
-# tests
-
-# file with working notes
-notes
-tempfile
-logfile
-token_usage*.log
-*.log
-test_logs
-openai_request_logs/
-
+# python environment
 __pycache__
 .venv
 .pytest_cache
-# test*.py
-projects/
 
 # ignore playwright stuff
 playwright.config.ts
@@ -26,10 +15,10 @@ node_modules/
 /test-results/
 /playwright-report/
 /playwright/.cache/
-.env
 
 # IDE specific folders
 .idea/
 .vim/
 
+# Agent store
 agents/

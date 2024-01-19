@@ -1,7 +1,3 @@
-llm_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4"]
-function_call_defaults = ["auto", "none"]
-
-
 MODEL_TOKEN_LIMITS = {
     "gpt-3.5-turbo": 4096,
     "gpt-3.5-turbo-16k": 16384,

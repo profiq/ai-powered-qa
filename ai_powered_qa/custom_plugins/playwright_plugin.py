@@ -2,9 +2,9 @@ import asyncio
 import json
 import re
 
-from bs4 import BeautifulSoup
 import playwright.async_api
 import playwright.sync_api
+from bs4 import BeautifulSoup
 
 from ai_powered_qa.components.plugin import Plugin, tool
 
@@ -15,12 +15,18 @@ class PlaywrightPlugin(Plugin):
     _playwright: playwright.async_api.Playwright
     _browser: playwright.async_api.Browser
     _page: playwright.async_api.Page
+    _buffer: bytes
+
+    @property
+    def buffer(self) -> bytes:
+        return bytes(self._buffer)
 
     def __init__(self, **data):
         super().__init__(**data)
         self._playwright = None
         self._browser = None
         self._page = None
+        self._buffer = None
         self._loop = asyncio.new_event_loop()
 
     def run_async(self, coroutine):
@@ -38,6 +44,7 @@ class PlaywrightPlugin(Plugin):
     @property
     def context_message(self) -> str:
         html = self.run_async(self._get_page_content())
+        self.screenshot()
         return f"Current page content:\n\n ```\n{html}\n```"
 
     async def _get_page_content(self):
@@ -122,6 +129,45 @@ class PlaywrightPlugin(Plugin):
             return f"Unable to fill up text on element '{selector}'."
         return f"Text input on the element by text, {selector}, was successfully performed."
 
+    @tool
+    def assert_that(self, selector: str, action: str, value: str = None):
+        """
+        Perform an assertion on an element based on its text content.
+
+        :param str selector: Selector for the element identified by its text content.
+        :param str action: [
+                  {
+                    "option": "is_visible",
+                    "description": "Check if the element is displayed in the content.",
+                  },
+                  {
+                    "option": "contain_text",
+                    "description": "Check if the element contains the specified text content.",
+                  }
+                ]
+        :param str value: Text to comparing in action contain_text or None.
+        """
+        return self.run_async(self._assert_that(selector, action, value))
+
+    async def _assert_that(self, selector: str, action: str, value: str = None):
+        page = await self.ensure_page()
+
+        if action == "is_visible":
+            state = await page.locator(selector).is_visible()
+            result_message = f"{selector} is {'visible' if state else 'not visible'} in context."
+        elif action == "contain_text":
+            text = await page.inner_text(selector)
+            if text == "":
+                text = await page.locator(selector).get_attribute("value")
+            result_message = (
+                f"{selector} {'contains' if value == text else 'does not contain'} '{value}', "
+                f"actual value: '{text}'."
+            )
+        else:
+            return "Not implemented action"
+        return f"Action '{action}' was successfully performed: {result_message}"
+
+
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:
             self._playwright = await playwright.async_api.async_playwright().start()
@@ -152,6 +198,13 @@ class PlaywrightPlugin(Plugin):
                         tool_call["function"]["name"],
                         **json.loads(tool_call["function"]["arguments"]),
                     )
+
+    def screenshot(self):
+        self.run_async(self._screenshot())
+
+    async def _screenshot(self):
+        page = await self.ensure_page()
+        self._buffer = await page.screenshot()
 
 
 def clean_html(html_content):
