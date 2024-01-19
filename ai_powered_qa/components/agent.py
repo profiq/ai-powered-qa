@@ -134,3 +134,27 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
         return "\n\n".join(contexts)
+
+    def generate_whisperer_interaction(self, html_context: str = None, model=None) -> Interaction:
+        model = model or self.model
+        self.system_message = ("You are QA expert to design test scenario in gherkin. "
+                               "Based on HTML and previous generated step, generate only one new step. "
+                               "Answer provide in Gherkin.")
+        _messages = [
+            {"role": "system", "content": self.system_message}
+        ]
+        if html_context:
+            _messages.append({"role": "user", "content": html_context})
+
+        request_params = {
+            "model": model,
+            "messages": _messages,
+        }
+        print(request_params)
+        completion = self.client.chat.completions.create(**request_params)
+
+        return Interaction(
+            request_params=request_params,
+            user_prompt=html_context,
+            agent_response=completion.choices[0].message,
+        )

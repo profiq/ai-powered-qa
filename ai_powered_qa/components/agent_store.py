@@ -107,3 +107,25 @@ class AgentStore:
 
         with open(file_path, "w") as file:
             file.write(interaction.model_dump_json(indent=4))
+
+    def load_gherkin_memory(self, agent: Agent):
+        file_name = "gherkin_memory.json"
+        history_directory = os.path.join(
+            self._directory, agent.agent_name, agent.history_name
+        )
+        file_path = os.path.join(history_directory, file_name)
+        if not os.path.exists(file_path):
+            return "No data"
+
+        with open(file_path, "r") as file:
+            return json.load(file)
+
+    def save_gherkin_memory(self, agent: Agent, data):
+        file_name = "gherkin_memory.json"
+        history_directory = os.path.join(
+            self._directory, agent.agent_name, agent.history_name
+        )
+        file_path = os.path.join(history_directory, file_name)
+
+        with open(file_path, "w") as file:
+            file.write(data)
