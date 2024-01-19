@@ -3,6 +3,7 @@ import json
 import streamlit as st
 
 from ai_powered_qa.components.agent_store import AgentStore
+from ai_powered_qa.components.agent import AVAILABLE_MODELS
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
@@ -54,8 +55,9 @@ def on_commit(interaction):
     agent_store.save_history(agent)
 
 
-agent.system_message = sidebar.text_input("System message", key=SYSTEM_MESSAGE_KEY)
-
+agent.model = sidebar.selectbox("Model", AVAILABLE_MODELS)
+agent.system_message = sidebar.text_area("System message", agent.system_message)
+generate_empty = sidebar.checkbox("Generate interaction even if user message is empty", False)
 agent_store.save_agent(agent)
 
 
@@ -104,6 +106,14 @@ if agent.history:
 
 user_message_content = None
 
+available_tools = agent.get_tools_from_plugins()
+available_tool_names = [tool["function"]["name"] for tool in available_tools]
+
+tool_call = st.selectbox(
+    "Tool call",
+    ["auto", "none"] + available_tool_names,
+)
+
 # User message
 if last_message is None or last_message["role"] == "assistant":
     with st.chat_message("user"):
@@ -112,11 +122,13 @@ if last_message is None or last_message["role"] == "assistant":
             key="user_message_content",
             label_visibility="collapsed",
         )
-        if not user_message_content:
+        if not user_message_content and not generate_empty:
             st.stop()
 
 try:
-    interaction = agent.generate_interaction(user_message_content)
+    interaction = agent.generate_interaction(
+        user_message_content, tool_choice=tool_call
+    )
 except Exception as e:
     st.write(e)
     st.stop()
@@ -127,8 +139,9 @@ context_message = (
     else interaction.request_params["messages"][-1]
 )
 
+
 with st.chat_message("user"):
-    st.write(context_message["content"])
+    st.text_area("Context message", context_message["content"], height=200, disabled=True)
     st.image(agent.plugins["PlaywrightPlugin"].buffer)
 
 agent_store.save_interaction(agent, interaction)
