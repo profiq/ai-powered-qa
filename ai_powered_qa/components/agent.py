@@ -185,10 +185,3 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
         return "\n\n".join(contexts)
-
-    @staticmethod
-    def _count_tokens_for_tool_responses(history: list, model: str) -> int:
-        total_tokens = 0
-        for history_item in history:
-            total_tokens += count_tokens(history_item["content"], model)
-        return total_tokens
