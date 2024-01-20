@@ -153,23 +153,26 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         if user_prompt:
             total_tokens += count_tokens(user_prompt, model)
 
-        for i in range(len(self.history)):
-            history_item = self.history[-i - 1]
-            content_length = count_tokens(history_item["content"], model)
+        messages_to_add = []
+        i = 0
 
-            if "tool_calls" in history_item:
-                content_length += count_tokens(
-                    yaml.dump(history_item["tool_calls"]), model
-                )
-                content_length += self._count_tokens_for_tool_responses(
-                    self.history[-i : -i - len(history_item["tool_calls"])], model
-                )
-                i += len(history_item["tool_calls"])
+        while i < len(self.history):
+            history_item = self.history[-i - 1]
+            messages_to_add.insert(0, history_item)
+            content_length = count_tokens(yaml.dump(history_item), model)
+
+            while history_item["role"] == "tool":
+                i += 1
+                history_item = self.history[-i - 1]
+                messages_to_add.insert(0, history_item)
+                content_length += count_tokens(yaml.dump(history_item), model)
 
             if content_length + total_tokens > max_tokens:
                 break
             total_tokens += content_length
-            messages.insert(1, history_item)
+            messages[1:1] = messages_to_add
+            messages_to_add = []
+            i += 1
 
         messages.append({"role": "user", "content": context_message})
         if user_prompt:
@@ -182,10 +185,3 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
         return "\n\n".join(contexts)
-
-    @staticmethod
-    def _count_tokens_for_tool_responses(history: list, model: str) -> int:
-        total_tokens = 0
-        for history_item in history:
-            total_tokens += count_tokens(history_item["content"], model)
-        return total_tokens
