@@ -8,34 +8,38 @@ from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
 HISTORY_NAME_KEY = "history_name"
+AGENT_NAME_KEY = "agent_name"
 
 
-@st.cache_resource
-def get_agent_store():
-    return AgentStore(
-        "agents",
-        name_to_plugin_class={
-            "PlaywrightPlugin": PlaywrightPlugin,
-        },
-    )
-
-
-agent_store = get_agent_store()
-
-
-@st.cache_resource
-def get_agent(agent_name):
-    new_agent = agent_store.load_agent(
-        agent_name, default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}}
-    )
-    st.session_state[SYSTEM_MESSAGE_KEY] = new_agent.system_message
-    return new_agent
+agent_store = AgentStore(
+    "agents",
+    name_to_plugin_class={
+        "PlaywrightPlugin": PlaywrightPlugin,
+    },
+)
 
 
 sidebar = st.sidebar
 
-agent_name = sidebar.text_input("Agent name", value="test_agent")
-agent = get_agent(agent_name)
+
+def load_agent():
+    _agent_name = st.session_state[AGENT_NAME_KEY]
+    _agent = agent_store.load_agent(
+        _agent_name,
+        default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}},
+    )
+    st.session_state["agent_instance"] = _agent
+    st.session_state[SYSTEM_MESSAGE_KEY] = _agent.system_message
+
+
+agent_name = sidebar.text_input(
+    "Agent name", value="test_agent", key=AGENT_NAME_KEY, on_change=load_agent
+)
+
+if not "agent_instance" in st.session_state:
+    load_agent()
+
+agent = st.session_state["agent_instance"]
 
 
 def on_commit(interaction):
@@ -143,9 +147,8 @@ context_message = (
 
 
 with st.chat_message("user"):
-    st.text_area(
-        "Context message", context_message["content"], height=200, disabled=True
-    )
+    st.write("**Cotext message**")
+    st.write(context_message["content"])
     st.image(agent.plugins["PlaywrightPlugin"].buffer)
 
 agent_store.save_interaction(agent, interaction)

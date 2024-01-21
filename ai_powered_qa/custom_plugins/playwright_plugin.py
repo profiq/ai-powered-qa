@@ -9,6 +9,34 @@ from bs4 import BeautifulSoup
 from ai_powered_qa.components.plugin import Plugin, tool
 
 
+js_function = """
+function updateElementVisibility() {
+    const visibilityAttribute = 'data-playwright-visible';
+
+    const previouslyMarkedElements = document.querySelectorAll('[' + visibilityAttribute + ']');
+    previouslyMarkedElements.forEach(el => el.removeAttribute(visibilityAttribute));
+
+    function isElementVisibleInViewport(el) {
+        const rect = el.getBoundingClientRect();
+        const windowHeight = (window.innerHeight || document.documentElement.clientHeight);
+        const windowWidth = (window.innerWidth || document.documentElement.clientWidth);
+        return (
+            rect.top >= 0 && rect.top <= windowHeight && rect.height > 0 &&
+            rect.left >= 0 && rect.left <= windowWidth && rect.width > 0
+        );
+    }
+
+    const allElements = document.querySelectorAll('*');
+    allElements.forEach(el => {
+        if (isElementVisibleInViewport(el)) {
+            el.setAttribute(visibilityAttribute, 'true');
+        }
+    });
+}
+window.updateElementVisibility = updateElementVisibility;
+"""
+
+
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
 
@@ -49,6 +77,9 @@ class PlaywrightPlugin(Plugin):
 
     async def _get_page_content(self):
         page = await self.ensure_page()
+        if page.url == "about:blank":
+            return "No page loaded yet."
+        await page.evaluate("window.updateElementVisibility()")
         html_content = await page.content()
         stripped_html = clean_html(html_content)
         return stripped_html
@@ -124,9 +155,10 @@ class PlaywrightPlugin(Plugin):
     async def _fill_element(self, selector: str, text: str, timeout: int = 3000):
         page = await self.ensure_page()
         try:
-            await page.locator(selector).fill(text, timeout=timeout)
-        except Exception:
-            return f"Unable to fill up text on element '{selector}'."
+            await page.locator(_selector_visible(selector)).fill(text, timeout=timeout)
+        except Exception as e:
+            print(e)
+            return f"Unable to fill element. {e}"
         return f"Text input on the element by text, {selector}, was successfully performed."
 
     @tool
@@ -154,7 +186,9 @@ class PlaywrightPlugin(Plugin):
 
         if action == "is_visible":
             state = await page.locator(selector).is_visible()
-            result_message = f"{selector} is {'visible' if state else 'not visible'} in context."
+            result_message = (
+                f"{selector} is {'visible' if state else 'not visible'} in context."
+            )
         elif action == "contain_text":
             text = await page.inner_text(selector)
             if text == "":
@@ -167,12 +201,13 @@ class PlaywrightPlugin(Plugin):
             return "Not implemented action"
         return f"Action '{action}' was successfully performed: {result_message}"
 
-
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:
             self._playwright = await playwright.async_api.async_playwright().start()
             self._browser = await self._playwright.chromium.launch(headless=False)
-            self._page = await self._browser.new_page()
+            browser_context = await self._browser.new_context()
+            await browser_context.add_init_script(js_function)
+            self._page = await browser_context.new_page()
         return self._page
 
     def close(self):
@@ -216,14 +251,32 @@ def clean_html(html_content):
     - We replace <div> with <d> as they are very common.
     - The _clean_attributes function removes all `data-` attributes
     """
-    html_clean = _clean_attributes(html_content)
+    soup = BeautifulSoup(html_content, "html.parser")
+    _remove_not_visible(soup)
+    _remove_useless_tags(soup)
+    _unwrap_single_child(soup)
+    html_clean = str(soup)
+    html_clean = _clean_attributes(html_clean)
     html_clean = re.sub(r"<div[\s]*>[\s]*</div>", "", html_clean)
     html_clean = re.sub(r"<!--[\s\S]*?-->", "", html_clean)
-    html_clean = html_clean.replace("<div", "<d").replace("</div>", "</d>")
-    soup = BeautifulSoup(html_clean, "html.parser")
-    _unwrap_single_child(soup)
-    _remove_useless_tags(soup)
-    return str(soup)
+    # html_clean = html_clean.replace("<div", "<d").replace("</div>", "</d>")
+    return html_clean
+
+
+def _remove_not_visible(soup: BeautifulSoup):
+    to_keep = set()
+    visible_elements = soup.find_all(attrs={"data-playwright-visible": True})
+    for element in visible_elements:
+        current = element
+        while current is not None:
+            if current in to_keep:
+                break
+            to_keep.add(current)
+            current = current.parent
+
+    for element in soup.find_all(True):
+        if element.name and element not in to_keep:
+            element.decompose()
 
 
 def _clean_attributes(html: str) -> str:
@@ -259,7 +312,11 @@ def _unwrap_single_child(soup: BeautifulSoup):
     save some tokens.
     """
     for tag in soup.find_all(True):
-        if len(tag.contents) == 1 and not isinstance(tag.contents[0], str):
+        if (
+            len(tag.contents) == 1
+            and not isinstance(tag.contents[0], str)
+            and not tag.name in ["button", "input", "a", "select", "textarea"]
+        ):
             tag.unwrap()
 
 
@@ -274,3 +331,9 @@ def _remove_useless_tags(soup):
     ]
     for t in soup.find_all(tags_to_remove):
         t.decompose()
+
+
+def _selector_visible(selector: str) -> str:
+    if ":visible" not in selector:
+        return f"{selector}:visible"
+    return selector
