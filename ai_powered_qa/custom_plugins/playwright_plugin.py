@@ -34,6 +34,30 @@ function updateElementVisibility() {
     });
 }
 window.updateElementVisibility = updateElementVisibility;
+
+function updateElementScrollability() {
+    const scrollableAttribute = 'data-playwright-scrollable';
+
+    // First, clear the attribute from all elements
+    const previouslyMarkedElements = document.querySelectorAll('[' + scrollableAttribute + ']');
+    previouslyMarkedElements.forEach(el => el.removeAttribute(scrollableAttribute));
+
+    // Function to check if an element is scrollable
+    function isElementScrollable(el) {
+        const hasScrollableContent = el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth;
+        const overflowStyle = window.getComputedStyle(el).overflow + window.getComputedStyle(el).overflowX + window.getComputedStyle(el).overflowY;
+        return hasScrollableContent && /(auto|scroll)/.test(overflowStyle);
+    }
+
+    // Mark all scrollable elements
+    const allElements = document.querySelectorAll('*');
+    allElements.forEach(el => {
+        if (isElementScrollable(el)) {
+            el.setAttribute(scrollableAttribute, 'true');
+        }
+    });
+}
+window.updateElementScrollability = updateElementScrollability;
 """
 
 
@@ -80,6 +104,7 @@ class PlaywrightPlugin(Plugin):
         if page.url == "about:blank":
             return "No page loaded yet."
         await page.evaluate("window.updateElementVisibility()")
+        await page.evaluate("window.updateElementScrollability()")
         html_content = await page.content()
         stripped_html = clean_html(html_content)
         return stripped_html
@@ -201,6 +226,38 @@ class PlaywrightPlugin(Plugin):
             return "Not implemented action"
         return f"Action '{action}' was successfully performed: {result_message}"
 
+    @tool
+    def scroll(self, selector: str, direction: str):
+        """
+        Scroll up or down in a selected scroll container
+
+        :param str selector: CSS selector for the scroll container
+        :param str direction: Direction to scroll in. Either 'up' or 'down'
+        """
+        return self.run_async(self._scroll(selector, direction))
+
+    async def _scroll(self, selector: str, direction: str):
+        page = await self.ensure_page()
+        try:
+            bounds = await page.locator(selector).bounding_box()
+            if not bounds:
+                return f"Unable to scroll in element '{selector}' as it does not exist"
+            x = bounds["x"] + bounds["width"] / 2
+            y = bounds["y"] + bounds["height"] / 2
+            delta = bounds["height"] * 0.8
+            await page.mouse.move(x=x, y=y)
+            if direction == "up":
+                await page.mouse.wheel(delta_y=-delta, delta_x=0)
+            elif direction == "down":
+                await page.mouse.wheel(delta_y=delta, delta_x=0)
+            else:
+                return f"Unable to scroll in element '{selector}' as direction '{direction}' is not supported"
+
+        except Exception as e:
+            print(e)
+            return f"Unable to scroll. {e}"
+        return f"Scrolling in {direction} direction was successfully performed."
+
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:
             self._playwright = await playwright.async_api.async_playwright().start()
@@ -283,7 +340,7 @@ def _clean_attributes(html: str) -> str:
     regexes = [
         r'class="[^"]*"',
         r'style="[^"]*"',
-        r'data-(?!test)[a-zA-Z\-]+="[^"]*"',
+        r'data-(?!test|playwright-scrollable)[a-zA-Z\-]+="[^"]*"',
         r'aria-[a-zA-Z\-]+="[^"]*"',
         r'on[a-zA-Z\-]+="[^"]*"',
         r'role="[^"]*"',
