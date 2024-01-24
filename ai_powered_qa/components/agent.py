@@ -13,7 +13,6 @@ import yaml
 
 load_dotenv()
 
-
 AVAILABLE_MODELS = ["gpt-3.5-turbo-1106", "gpt-4-1106-preview"]
 
 
@@ -66,11 +65,11 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         return tools
 
     def generate_interaction(
-        self,
-        user_prompt: str = None,
-        model=None,
-        tool_choice: str = "auto",
-        max_response_tokens=1000,
+            self,
+            user_prompt: str = None,
+            model=None,
+            tool_choice: str = "auto",
+            max_response_tokens=1000,
     ) -> Interaction:
         model = model or self.model
         max_history_tokens = MODEL_TOKEN_LIMITS[model] - max_response_tokens
@@ -143,7 +142,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             p.reset_history(self.history)
 
     def _get_messages_for_completion(
-        self, user_prompt: str | None, model: str, max_tokens: int
+            self, user_prompt: str | None, model: str, max_tokens: int
     ) -> list[dict]:
         messages = [{"role": "system", "content": self.system_message}]
         context_message = self._generate_context_message()
@@ -178,7 +177,6 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         if user_prompt:
             messages.append({"role": "user", "content": user_prompt})
 
-        print(messages[1])
 
         return messages
 
@@ -188,11 +186,17 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     def generate_whisperer_interaction(self, html_context: str = None, model=None) -> Interaction:
         model = model or self.model
-        self.system_message = ("You are QA expert to design test scenario in gherkin. "
-                               "Based on HTML and previous generated step, generate only one new step. "
-                               "Answer provide in Gherkin.")
+        gherkin_system_message = ("You are a QA expert for designing test scenarios in gherkin language. "
+                                  "Based on provided HTML and your previous generated steps, "
+                                  "generate one unique test scenario, not same or similar as previous scenario."
+                                  "You can test all element which are displayed in HTML."
+                                  "Answer provide in Gherkin."
+                                  "Example:"
+                                  "Scenario: Add and remove book to the cart"
+                                  "When: I add item book to the cart"
+                                  "Then: I can remove book item from the cart")
         _messages = [
-            {"role": "system", "content": self.system_message}
+            {"role": "system", "content": gherkin_system_message}
         ]
         if html_context:
             _messages.append({"role": "user", "content": html_context})
@@ -201,7 +205,6 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             "model": model,
             "messages": _messages,
         }
-        print(request_params)
         completion = self.client.chat.completions.create(**request_params)
 
         return Interaction(

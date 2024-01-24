@@ -120,12 +120,23 @@ class AgentStore:
         with open(file_path, "r") as file:
             return json.load(file)
 
-    def save_gherkin_memory(self, agent: Agent, data):
+    def update_gherkin_memory(self, agent: Agent, property_name, new_value):
         file_name = "gherkin_memory.json"
         history_directory = os.path.join(
             self._directory, agent.agent_name, agent.history_name
         )
         file_path = os.path.join(history_directory, file_name)
 
-        with open(file_path, "w") as file:
-            file.write(data)
+        try:
+            with open(file_path, 'r') as file:
+                data = json.load(file)
+        except FileNotFoundError:
+            data = {"gherkin_scenarios": [],
+                    "html_content": "`"}
+
+        if property_name in data and isinstance(data[property_name], list):
+            data[property_name].extend(new_value)
+        else:
+            data[property_name] = new_value
+        with open(file_path, 'w') as file:
+            json.dump(data, file, indent=2)
