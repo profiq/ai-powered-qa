@@ -1,4 +1,5 @@
 import json
+import re
 
 import streamlit as st
 
@@ -122,19 +123,29 @@ tool_call = st.selectbox(
 if last_message is None or last_message["role"] == "assistant":
     if not user_message_content and generate_gherkin:
         gherkin_data = agent_store.load_gherkin_memory(agent)
+        print(gherkin_data["html_content"])
         if gherkin_data != "No data":
             if gherkin_data["html_content"] != "`":
                 result = agent.generate_whisperer_interaction(json.dumps(gherkin_data))
                 st.session_state['user_message_content'] = result.agent_response.content
-                agent_store.update_gherkin_memory(agent, "gherkin_scenarios", [result.agent_response.content[11:]])
+                agent_store.update_gherkin_memory(
+                    agent,
+                    "gherkin_scenarios",
+                    [re.sub(r'^```gherkin', '', result.agent_response.content)]
+                )
     with st.chat_message("user"):
-        user_message_content = st.text_area(
-            "Gherkin content",
-            key="user_message_content"
-        )
+        if generate_gherkin:
+            user_message_content = st.text_area(
+                "Gherkin content",
+                key="user_message_content"
+            )
+        else:
+            user_message_content = st.text_area(
+                "User context content",
+                key="user_message_content"
+            )
         if not user_message_content and not generate_empty:
             st.stop()
-
 
 try:
     interaction = agent.generate_interaction(
@@ -162,6 +173,7 @@ agent_response = interaction.agent_response.model_dump()
 
 # save gherkin data
 html_content = context_message["content"][context_message["content"].find("<!DOCTYPE html>"):] or ""
+print("I overwrite HTML")
 agent_store.update_gherkin_memory(agent, "html_content", html_content)
 
 st.session_state["agent_message_content"] = agent_response["content"]

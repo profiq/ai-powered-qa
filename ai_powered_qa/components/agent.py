@@ -186,15 +186,12 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     def generate_whisperer_interaction(self, html_context: str = None, model=None) -> Interaction:
         model = model or self.model
-        gherkin_system_message = ("You are a QA expert for designing test scenarios in gherkin language. "
-                                  "Based on provided HTML and your previous generated steps, "
-                                  "generate one unique test scenario, not same or similar as previous scenario."
-                                  "You can test all element which are displayed in HTML."
-                                  "Answer provide in Gherkin."
-                                  "Example:"
-                                  "Scenario: Add and remove book to the cart"
-                                  "When: I add item book to the cart"
-                                  "Then: I can remove book item from the cart")
+        gherkin_system_message = ("You are test user. Based on provided HTML state and your previous generated steps, "
+                                  "generate one test step (subtask), to finish main task."
+                                  "You can navigate over the buttons to the new pages of the website."
+                                  "Answer provide in language Gherkin."
+                                  "Task:"
+                                  "Make and finish order as logged user.")
         _messages = [
             {"role": "system", "content": gherkin_system_message}
         ]
