@@ -90,6 +90,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         request_params = {
             "model": model,
             "messages": _messages,
+            "temperature": 0.1,
             "tool_choice": (
                 tool_choice
                 if tool_choice in ["auto", "none"]

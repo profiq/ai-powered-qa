@@ -11,7 +11,7 @@ from ai_powered_qa.components.plugin import Plugin, tool
 
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
-    part_length: str = 10000
+    part_length: str = 15000
 
     _playwright: playwright.async_api.Playwright
     _browser: playwright.async_api.Browser
@@ -38,26 +38,21 @@ class PlaywrightPlugin(Plugin):
     @property
     def system_message(self) -> str:
         return """
-            You can use Playwright to interact with web pages. You always get 
-            the HTML content of the current page. There is one caveat though:
-            You need to handle all <d> tags as if they were <div> tags.
+            You can use Playwright to interact with web pages. You get 
+            the HTML content of the current page.
 
             When working with HTML content you can use the `move_to_html_part`
-            tool to move to a specific part of the HTML content. Alway take a short note about
-            what the part contains before moving to a different part, 
-            because the HTML content won't be visible if you move to another part.
+            tool to move to a specific part of the HTML content. Alway take a 
+            short note about what the part contains before moving to a 
+            different part.
         """
 
     @property
     def context_message(self) -> str:
         html = self.run_async(self._get_page_content())
-<<<<<<< Updated upstream
         self.screenshot()
-        return f"Current page content:\n\n ```\n{html}\n```"
-=======
         part, max_parts = self._get_html_part(html)
         return f"Current page content:\n\n ```\n{part}\n``` \n\n Part {self._part + 1} of {max_parts}."
->>>>>>> Stashed changes
 
     async def _get_page_content(self):
         page = await self.ensure_page()
@@ -72,6 +67,7 @@ class PlaywrightPlugin(Plugin):
 
         :param str url: The URL to navigate to.
         """
+        self._part = 0
         return self.run_async(self._navigate_to_url(url))
 
     async def _navigate_to_url(self, url: str):
@@ -86,7 +82,8 @@ class PlaywrightPlugin(Plugin):
     @tool
     def click_element(self, selector: str, index: int = 0, timeout: int = 3_000) -> str:
         """
-        Click on an element with the given CSS selector
+        Click on an element identified by a given CSS selector. Prioritize clicking on interactive
+        elements such as buttons and links.
 
         :param str selector: CSS selector for the element to click
         :param int index: Index of the element to click
@@ -97,22 +94,15 @@ class PlaywrightPlugin(Plugin):
     async def _click_element(
         self, selector: str, index: int = 0, timeout: int = 3_000
     ) -> str:
-        visible_only: bool = True
-
-        def _selector_effective(selector: str, index: int) -> str:
-            if not visible_only:
-                return selector
-            return f"{selector} >> visible=1 >> nth={index}"
-
         playwright_strict: bool = False
         page = await self.ensure_page()
         try:
-            selector = _selector_effective(selector, index)
+            selector = f"{selector} >> nth={index}"
             element_exists = await page.is_visible(selector)
             if not element_exists:
                 return f"Unable to click on element '{selector}' as it does not exist"
             await page.click(
-                selector=_selector_effective(selector, index),
+                selector=selector,
                 strict=playwright_strict,
                 timeout=timeout,
             )
@@ -124,7 +114,7 @@ class PlaywrightPlugin(Plugin):
     @tool
     def fill_element(self, selector: str, text: str, timeout: int = 3000):
         """
-        Text input on element in the current web page matching the text content
+        Fill up a form input element identified by a given CSS selector with a given text
 
         :param str selector: Selector for the element by text content.
         :param str text: Text what you want to fill up.
@@ -183,14 +173,13 @@ class PlaywrightPlugin(Plugin):
                         **json.loads(tool_call["function"]["arguments"]),
                     )
 
-<<<<<<< Updated upstream
     def screenshot(self):
         self.run_async(self._screenshot())
 
     async def _screenshot(self):
         page = await self.ensure_page()
         self._buffer = await page.screenshot()
-=======
+
     def _get_html_part(self, html: str) -> str:
         """
         Splits the HTML content into parts of about self.part_length characters.
@@ -212,7 +201,6 @@ class PlaywrightPlugin(Plugin):
                 current_part += char
         parts.append(current_part)
         return parts[self._part], len(parts)
->>>>>>> Stashed changes
 
 
 def clean_html(html_content):
@@ -228,7 +216,6 @@ def clean_html(html_content):
     html_clean = re.sub(r"<div[\s]*>[\s]*</div>", "", html_clean)
     html_clean = re.sub(r"<span[\s]*>[\s]*</span>", "", html_clean)
     html_clean = re.sub(r"<!--[\s\S]*?-->", "", html_clean)
-    html_clean = html_clean.replace("<div", "<d").replace("</div>", "</d>")
     soup = BeautifulSoup(html_clean, "html.parser")
     _unwrap_single_child(soup)
     _remove_useless_tags(soup)
@@ -280,8 +267,14 @@ def _unwrap_single_child(soup: BeautifulSoup):
     Unwraping means removing a tag but keeping its children. This can again
     save some tokens.
     """
+    wrappable_tags = ("d", "span", "i", "b", "strong", "em")
+
     for tag in soup.find_all(True):
-        if len(tag.contents) == 1 and not isinstance(tag.contents[0], str):
+        if (
+            len(tag.contents) == 1
+            and not isinstance(tag.contents[0], str)
+            and tag.name in wrappable_tags
+        ):
             tag.unwrap()
 
 
