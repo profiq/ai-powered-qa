@@ -65,11 +65,11 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         return tools
 
     def generate_interaction(
-            self,
-            user_prompt: str = None,
-            model=None,
-            tool_choice: str = "auto",
-            max_response_tokens=1000,
+        self,
+        user_prompt: str = None,
+        model=None,
+        tool_choice: str = "auto",
+        max_response_tokens=1000,
     ) -> Interaction:
         model = model or self.model
         max_history_tokens = MODEL_TOKEN_LIMITS[model] - max_response_tokens
@@ -142,7 +142,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             p.reset_history(self.history)
 
     def _get_messages_for_completion(
-            self, user_prompt: str | None, model: str, max_tokens: int
+        self, user_prompt: str | None, model: str, max_tokens: int
     ) -> list[dict]:
         messages = [{"role": "system", "content": self.system_message}]
         context_message = self._generate_context_message()
@@ -177,24 +177,25 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         if user_prompt:
             messages.append({"role": "user", "content": user_prompt})
 
-
         return messages
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
         return "\n\n".join(contexts)
 
-    def generate_whisperer_interaction(self, html_context: str = None, model=None) -> Interaction:
+    def generate_whisperer_interaction(
+        self, html_context: str = None, model=None
+    ) -> Interaction:
         model = model or self.model
-        gherkin_system_message = ("You are test user. Based on provided HTML state and "
-                                  "previous generated steps (gherkin_step_history), "
-                                  "generate one test step (subtask), to try finish (main_task)."
-                                  "You can navigate over the buttons which are visible in HTML. "
-                                  "Do NOT repeat SAME steps."
-                                  "Answer provide in language Gherkin.")
-        _messages = [
-            {"role": "system", "content": gherkin_system_message}
-        ]
+        gherkin_system_message = (
+            "You are test user. Based on provided HTML state and "
+            "previous generated steps (gherkin_step_history), "
+            "generate one test step (subtask), to try finish (main_task)."
+            "You can navigate over the buttons which are visible in HTML. "
+            "Do NOT repeat SAME steps."
+            "Answer provide in language Gherkin."
+        )
+        _messages = [{"role": "system", "content": gherkin_system_message}]
         if html_context:
             _messages.append({"role": "user", "content": html_context})
 
