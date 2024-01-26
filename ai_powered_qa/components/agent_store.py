@@ -131,8 +131,10 @@ class AgentStore:
             with open(file_path, 'r') as file:
                 data = json.load(file)
         except FileNotFoundError:
-            data = {"gherkin_scenarios": [],
-                    "html_content": "`"}
+            data = {"gherkin_steps_history": [],
+                    "html_content": "`",
+                    "main_task": ""}
+            os.makedirs(history_directory, exist_ok=True)
 
         if property_name in data and isinstance(data[property_name], list):
             data[property_name].extend(new_value)

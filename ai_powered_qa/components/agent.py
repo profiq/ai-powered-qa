@@ -186,12 +186,12 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     def generate_whisperer_interaction(self, html_context: str = None, model=None) -> Interaction:
         model = model or self.model
-        gherkin_system_message = ("You are test user. Based on provided HTML state and your previous generated steps, "
-                                  "generate one test step (subtask), to finish main task."
-                                  "You can navigate over the buttons to the new pages of the website."
-                                  "Answer provide in language Gherkin."
-                                  "Task:"
-                                  "Make and finish order as logged user.")
+        gherkin_system_message = ("You are test user. Based on provided HTML state and "
+                                  "previous generated steps (gherkin_step_history), "
+                                  "generate one test step (subtask), to try finish (main_task)."
+                                  "You can navigate over the buttons which are visible in HTML. "
+                                  "Do NOT repeat SAME steps."
+                                  "Answer provide in language Gherkin.")
         _messages = [
             {"role": "system", "content": gherkin_system_message}
         ]

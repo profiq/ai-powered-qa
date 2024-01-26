@@ -118,6 +118,10 @@ tool_call = st.selectbox(
     "Tool call",
     ["auto", "none"] + available_tool_names,
 )
+if generate_gherkin and history_name is not None:
+    main_task = sidebar.text_input("Main task", value="")
+if generate_gherkin:
+    agent_store.update_gherkin_memory(agent, "main_task", main_task)
 
 # User message
 if last_message is None or last_message["role"] == "assistant":
@@ -130,7 +134,7 @@ if last_message is None or last_message["role"] == "assistant":
                 st.session_state['user_message_content'] = result.agent_response.content
                 agent_store.update_gherkin_memory(
                     agent,
-                    "gherkin_scenarios",
+                    "gherkin_steps_history",
                     [re.sub(r'^```gherkin', '', result.agent_response.content)]
                 )
     with st.chat_message("user"):
