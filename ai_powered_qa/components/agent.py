@@ -85,6 +85,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
                 if tool_choice in ["auto", "none"]
                 else {"type": "function", "function": {"name": tool_choice}}
             ),
+            "temperature": 0.1,
         }
 
         tools = self.get_tools_from_plugins()
