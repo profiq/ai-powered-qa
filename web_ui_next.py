@@ -57,7 +57,9 @@ def on_commit(interaction):
 
 agent.model = sidebar.selectbox("Model", AVAILABLE_MODELS)
 agent.system_message = sidebar.text_area("System message", agent.system_message)
-generate_empty = sidebar.checkbox("Generate interaction even if user message is empty", False)
+generate_empty = sidebar.checkbox(
+    "Generate interaction even if user message is empty", False
+)
 agent_store.save_agent(agent)
 
 
@@ -141,7 +143,9 @@ context_message = (
 
 
 with st.chat_message("user"):
-    st.text_area("Context message", context_message["content"], height=200, disabled=True)
+    st.text_area(
+        "Context message", context_message["content"], height=200, disabled=True
+    )
     st.image(agent.plugins["PlaywrightPlugin"].buffer)
 
 agent_store.save_interaction(agent, interaction)

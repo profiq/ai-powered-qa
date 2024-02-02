@@ -141,6 +141,62 @@ class PlaywrightPlugin(Plugin):
         """
         self._part = part - 1
         return f"Moved to HTML part {part}"
+    
+    @tool
+    def select_option(self, selector: str, value: str):
+        """
+        Select an option from a dropdown element identified by its text content.
+
+        :param str selector: Selector for the element identified by its text content.
+        :param str value: Text content of the option to select.
+        """
+        return self.run_async(self._select_option(selector, value))
+
+    async def _select_option(self, selector: str, value: str):
+        page = await self.ensure_page()
+        try:
+            await page.select_option(selector, value)
+        except Exception:
+            return f"Unable to select option '{value}' on element '{selector}'."
+        return f"Option '{value}' on element '{selector}' was successfully selected."
+
+    @tool
+    def assert_that(self, selector: str, action: str, value: str = None):
+        """
+        Perform an assertion on an element based on its text content.
+
+        :param str selector: Selector for the element identified by its text content.
+        :param str action: [
+                  {
+                    "option": "is_visible",
+                    "description": "Check if the element is displayed in the content.",
+                  },
+                  {
+                    "option": "contain_text",
+                    "description": "Check if the element contains the specified text content.",
+                  }
+                ]
+        :param str value: Text to comparing in action contain_text or None.
+        """
+        return self.run_async(self._assert_that(selector, action, value))
+
+    async def _assert_that(self, selector: str, action: str, value: str = None):
+        page = await self.ensure_page()
+
+        if action == "is_visible":
+            state = await page.locator(selector).is_visible()
+            result_message = f"{selector} is {'visible' if state else 'not visible'} in context."
+        elif action == "contain_text":
+            text = await page.inner_text(selector)
+            if text == "":
+                text = await page.locator(selector).get_attribute("value")
+            result_message = (
+                f"{selector} {'contains' if value == text else 'does not contain'} '{value}', "
+                f"actual value: '{text}'."
+            )
+        else:
+            return "Not implemented action"
+        return f"Action '{action}' was successfully performed: {result_message}"
 
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:

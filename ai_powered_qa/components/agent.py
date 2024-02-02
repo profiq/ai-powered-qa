@@ -7,15 +7,14 @@ from pydantic import BaseModel, Field
 
 from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
-from .utils import generate_short_id, md5
+from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
+from .utils import generate_short_id, md5, count_tokens
+import yaml
 
 load_dotenv()
 
 
-AVAILABLE_MODELS = [
-    "gpt-3.5-turbo-1106",
-    "gpt-4-1106-preview"
-]
+AVAILABLE_MODELS = ["gpt-3.5-turbo-1106", "gpt-4-1106-preview"]
 
 
 class Agent(BaseModel, validate_assignment=True, extra="ignore"):
@@ -73,29 +72,26 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         return tools
 
     def generate_interaction(
-        self, user_prompt: str = None, model=None, tool_choice: str = "auto"
+        self,
+        user_prompt: str = None,
+        model=None,
+        tool_choice: str = "auto",
+        max_response_tokens=1000,
     ) -> Interaction:
         model = model or self.model
-        _messages = [
-            {"role": "system", "content": self.generate_system_message()},
-            *self.history,
-        ]
-
-        print(self.generate_system_message())
-        _messages.append({"role": "user", "content": self._generate_context_message()})
-
-        if user_prompt:
-            _messages.append({"role": "user", "content": user_prompt})
-
+        max_history_tokens = MODEL_TOKEN_LIMITS[model] - max_response_tokens
+        messages = self._get_messages_for_completion(
+            user_prompt, model, max_history_tokens
+        )
         request_params = {
             "model": model,
-            "messages": _messages,
-            "temperature": 0.1,
+            "messages": messages,
             "tool_choice": (
                 tool_choice
                 if tool_choice in ["auto", "none"]
                 else {"type": "function", "function": {"name": tool_choice}}
             ),
+            "temperature": 0.2,
         }
 
         tools = self.get_tools_from_plugins()
@@ -152,6 +148,46 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         p: Plugin
         for p in self.plugins.values():
             p.reset_history(self.history)
+
+    def _get_messages_for_completion(
+        self, user_prompt: str | None, model: str, max_tokens: int
+    ) -> list[dict]:
+        messages = [{"role": "system", "content": self.system_message}]
+        context_message = self._generate_context_message()
+
+        total_tokens = count_tokens(self.system_message, model)
+        total_tokens += count_tokens(context_message, model)
+        if user_prompt:
+            total_tokens += count_tokens(user_prompt, model)
+
+        messages_to_add = []
+        i = 0
+
+        while i < len(self.history):
+            history_item = self.history[-i - 1]
+            messages_to_add.insert(0, history_item)
+            content_length = count_tokens(yaml.dump(history_item), model)
+
+            while history_item["role"] == "tool":
+                i += 1
+                history_item = self.history[-i - 1]
+                messages_to_add.insert(0, history_item)
+                content_length += count_tokens(yaml.dump(history_item), model)
+
+            if content_length + total_tokens > max_tokens:
+                break
+            total_tokens += content_length
+            messages[1:1] = messages_to_add
+            messages_to_add = []
+            i += 1
+
+        messages.append({"role": "user", "content": context_message})
+        if user_prompt:
+            messages.append({"role": "user", "content": user_prompt})
+
+        print(messages[1])
+
+        return messages
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
