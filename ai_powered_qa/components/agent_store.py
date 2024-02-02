@@ -61,7 +61,8 @@ class AgentStore:
                         plugin_class = self._name_to_plugin_class[plugin_name]
                         plugins[plugin_name] = plugin_class(**plugin_config)
                     else:
-                        raise ValueError(f"Invalid plugin name: {plugin_name}")
+                        continue
+                        #raise ValueError(f"Invalid plugin name: {plugin_name}")
                 else:
                     plugins[plugin_name] = plugin_config
             config_data["plugins"] = plugins
