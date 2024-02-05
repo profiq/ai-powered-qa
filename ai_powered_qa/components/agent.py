@@ -35,6 +35,8 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     history_name: str = Field(default_factory=generate_short_id, exclude=True)
     history: list = Field(default=[], exclude=True)
 
+    goal: str
+
     def __init__(self, **data):
         super().__init__(**data)
         self.hash = self._compute_hash()
@@ -179,10 +181,290 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         if user_prompt:
             messages.append({"role": "user", "content": user_prompt})
 
-        print(messages[1])
-
         return messages
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
         return "\n\n".join(contexts)
+
+    def _plan(self, model: str | None = None) -> str:
+        model = model or self.model
+
+        system_prompt = """
+            You are an expert on creating plans for performing tasks on the 
+            web. A user gives you information about:
+
+            - high-level goal
+            - the current context - what they see in the web browser
+            - a list of tools that can be used
+            - history of previous actions and their results
+
+            Respond with a step-by-step plan of what to do next to accomplish
+            the goal. Each step should contain a reference for a tool that can
+            be used to execute the step. The explain why you chose the plan. 
+            The explanation should refer to previous steps. Always translate text 
+            input into the language of the website. 
+            Avoid repeating the same steps that have already been done.
+
+            Examples:
+
+            ### Example input ###
+
+            GOAL: I want to find a PC good for machine learning near Ostrava
+
+            TOOLS:
+            - thinking
+            - click on element
+            - navigate to a URL
+            - select an option in a select box
+            - type text into an input field
+
+            CONTEXT:
+            I see an empty search results page.
+
+            HISTORY:
+            1. I opened the web browser
+            2. I navigated to bazos.cz
+            3. I typed "PC for machine learning" into the search bar
+            4. I pressed the submit button
+            5. I was redirected to a search results page. It is empty.
+
+            ### Example output ###
+
+            6. Go back to the main page (navigate to a URL tool)
+            7. Instead of using search, click the PC category button (click on 
+               element tool)
+            8. Select a subcategory for desktop PC (click on element tool)
+            9. Evaluate the appropriateness for ML for each PC in the list 
+               (thinking tool)
+
+            REASONING:
+            The search have failed so we need to try a different approach. There as PC category
+            that likely contains some machine learning PC. We should explore this category.
+
+            ### Example input ###
+
+            GOAL: I want to buy a machine learning PC on Alza.cz
+
+            TOOLS:
+            - thinking
+            - click on element
+            - navigate to a URL
+            - select an option in a select box
+            - type text into an input field
+
+            CONTEXT:
+            I see an empty webpage with no contents
+
+            HISTORY:
+            1. I opened the web browser
+
+            ### Example output ###
+
+            2. Go to Alza.cz (navigate to a URL tool)
+            3. Think about what parameters are important when choosing a PC 
+               for machine learning (thinking tool)
+            4. Go to the PC category (click on element tool)
+            5. Set filters to only get PCs with parameters suitable for machine
+               learning (type text into an input field tool)
+
+            REASONING:
+            You need to be on the Alza.cz webpage to buy a PC there. It is 
+            likely that Alza.cz does not allow you to directly buy a PC for 
+            machine learning. You need to think about what components you 
+            want and what should be their parameters. Then you can go to the 
+            PC section and use filters to only get PCs with parameters 
+            suitable for machine learning.
+        """
+
+        plan_function = {
+            "name": "print_plan",
+            "description": "Prints the prepared plan for the user",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "step": {"type": "string"},
+                                "tool": {"type": "string"},
+                            },
+                        },
+                        "description": "The steps of the plan",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "The reasoning behind the plan",
+                    },
+                },
+            },
+        }
+
+        tools = "\n".join(
+            [
+                f"- {t['function']['name']} ({t['function']['description']})"
+                for t in self.get_tools_from_plugins()
+            ]
+        )
+
+        prompt = f"""
+            GOAL: {self.goal}
+
+            TOOLS:
+            {tools}
+
+            CONTEXT:
+            {self._generate_context_message()}
+        """
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        completion = self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0,
+            tools=[{"type": "function", "function": plan_function}],
+            tool_choice={"type": "function", "function": {"name": "print_plan"}},
+        )
+
+        return completion.choices[0].message
+
+    def _execute_first_step(self, plan: str, model: str | None = None) -> str:
+        model = model or self.model
+
+        tools = "\n".join(
+            [
+                f"- {t['function']['name']} ({t['function']['description']})"
+                for t in self.get_tools_from_plugins()
+            ]
+        )
+
+        system_prompt = f"""
+            You are an expert on executing tasks in a web browser according to a
+            plan. A user gives you a plan for performing a series of tasks on the
+            web. You have to execute the first step of the plan by invoking a proper
+            tool from the list of available tools. The user also provides you with
+            the current context - what they see in the web browser.
+
+            AVAILABLE TOOLS:
+            {tools}
+        """
+
+        prompt = f"""
+            GOAL: {self.goal}
+
+            PLAN:
+            {plan}
+
+            CONTEXT:
+            {self._generate_context_message()}
+        """
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        completion = self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0,
+            tools=self.get_tools_from_plugins(),
+        )
+
+        agent_response = completion.choices[0].message
+        if agent_response.tool_calls:
+            for tool_call in agent_response.tool_calls:
+                for p in self.plugins.values():
+                    result = p.call_tool(
+                        tool_call.function.name,
+                        **json.loads(tool_call.function.arguments),
+                    )
+                    if result is not None:
+                        break
+                    else:
+                        raise Exception(
+                            f"Tool {tool_call.function.name} not found in any plugin!"
+                        )
+
+        return completion.choices[0].message
+
+    def _reflect(self, last_action: str, model: str | None = None) -> str:
+        model = model or self.model
+
+        system_prompt = f"""
+            You are an expert on evaluating and reflecting on task 
+            performance. The user gives you information about:
+
+            - their high-level goal, 
+            - the current context - what they see in the web browser
+            - their memories about what they did in the past and what they learned
+            - latest task: the task the user just performed
+
+            You respond with a reflection answering on the previous action.
+            What was the last action the user performed?
+            What is the current situation of the user? 
+            What does the current web page contain?
+            Is there something you expected to see but you don't?
+            What information on the webpage is relevant to the task?
+            Was the high level goal achieved? If not, did the previous action 
+            bring the user closer to accomplishing it? 
+            Does the user need to try something else?
+
+            Provide a detailed reasoning.
+
+            Here is an example:
+
+            ### Example input ###
+
+            HIGH LEVEL GOAL: I want to find a PC good for machine learning near Ostrava
+
+            CONTEXT:
+            I see an empty search results page.
+            
+            PREVIOUS ACTIONS AND MEMORIES:
+            1. I opened the web browser
+            2. I navigated to bazos.cz
+            3. I typed "PC for machine learning" into the search bar
+
+            LAST ACTION:
+            Press the submit button (click on element tool)
+
+            ### Example output ###:
+            
+            The user finished the search for "PC for machine learning" by 
+            clicking the search submit button. The user sees an empty results
+            page.The goal is not yet accomplished. The search results page was
+            empty. A different approach has to be examined. The search has
+            failed, so we need to try a different approach. There as PC 
+            category that likely contains some machine learning PC. We should
+            explore this category.
+        """
+
+        prompt = f"""
+            HIGH LEVEL GOAL: {self.goal}
+
+            CONTEXT:
+            {self._generate_context_message()}
+
+            LAST ACTION:
+            {last_action}
+        """
+
+        print(system_prompt, prompt)
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+
+        completion = self.client.chat.completions.create(
+            model=model, messages=messages, temperature=0
+        )
+
+        return completion.choices[0].message.content

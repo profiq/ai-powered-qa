@@ -44,14 +44,19 @@ class PlaywrightPlugin(Plugin):
     @property
     def context_message(self) -> str:
         html = self.run_async(self._get_page_content())
+        url = self.run_async(self._get_current_url())
         self.screenshot()
-        return f"Current page content:\n\n ```\n{html}\n```"
+        return f"Current URL: {url}\n\nCurrent page content:\n\n ```\n{html}\n```"
 
     async def _get_page_content(self):
         page = await self.ensure_page()
         html_content = await page.content()
         stripped_html = clean_html(html_content)
         return stripped_html
+
+    async def _get_current_url(self):
+        page = await self.ensure_page()
+        return page.url
 
     @tool
     def navigate_to_url(self, url: str):
@@ -154,7 +159,9 @@ class PlaywrightPlugin(Plugin):
 
         if action == "is_visible":
             state = await page.locator(selector).is_visible()
-            result_message = f"{selector} is {'visible' if state else 'not visible'} in context."
+            result_message = (
+                f"{selector} is {'visible' if state else 'not visible'} in context."
+            )
         elif action == "contain_text":
             text = await page.inner_text(selector)
             if text == "":
@@ -166,7 +173,6 @@ class PlaywrightPlugin(Plugin):
         else:
             return "Not implemented action"
         return f"Action '{action}' was successfully performed: {result_message}"
-
 
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:
