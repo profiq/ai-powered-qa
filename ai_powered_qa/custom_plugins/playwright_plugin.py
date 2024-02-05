@@ -135,6 +135,24 @@ class PlaywrightPlugin(Plugin):
         return f"Text input on the element by text, {selector}, was successfully performed."
 
     @tool
+    def select_option(self, selector: str, value: str):
+        """
+        Select an option from a dropdown element identified by its text content.
+
+        :param str selector: Selector for the element identified by its text content.
+        :param str value: Text content of the option to select.
+        """
+        return self.run_async(self._select_option(selector, value))
+
+    async def _select_option(self, selector: str, value: str):
+        page = await self.ensure_page()
+        try:
+            await page.select_option(selector, value)
+        except Exception:
+            return f"Unable to select option '{value}' on element '{selector}'."
+        return f"Option '{value}' on element '{selector}' was successfully selected."
+
+    @tool
     def assert_that(self, selector: str, action: str, value: str = None):
         """
         Perform an assertion on an element based on its text content.
