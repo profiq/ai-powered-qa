@@ -6,8 +6,9 @@ import json
 
 def test_agent_playwright_response():
     agent = Agent(
+        model="gpt-3.5-turbo-0125",
         agent_name="test_reasoning_agent",
-        goal="Find a me a cheap Macbook Pro on e-bay",
+        goal="Chci si najít jednopokojový byt v Ostravě na prodej na Bazos.cz",
     )
     playwright_plugin = PlaywrightPlugin()
     memory_plugin = MemoryPlugin()

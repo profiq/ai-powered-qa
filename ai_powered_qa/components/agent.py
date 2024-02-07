@@ -275,6 +275,57 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             want and what should be their parameters. Then you can go to the 
             PC section and use filters to only get PCs with parameters 
             suitable for machine learning.
+
+            ### Example Input ###
+
+            GOAL: I want to book a last-minute flight from New York to London.
+
+            CONTEXT:
+            [HTML OF THE CURRENT PAGE]
+
+            TOOLS:
+            - thinking
+            - click on element
+            - navigate to a URL
+            - select an option in a select box
+            - type text into an input field
+
+            HISTORY:
+            1. I opened the web browser.
+            2. I navigated to a generic travel booking website.
+            3. I selected "New York" in the "From" dropdown.
+            4. I selected "London" in the "To" dropdown.
+            5. I selected today's date for departure.
+            6. I clicked the "Search" button.
+            7. I received a message saying "No flights available".
+
+            ### Example Output ###
+
+            8. Navigate to another travel booking website that specializes 
+               in last-minute flights (navigate to a URL tool).
+            9. Use the thinking tool to consider the time difference and 
+               decide on a flexible range of departure times.
+            10. Select "New York" in the "From" dropdown (select an option 
+                in a select box tool).
+            11. Select "London" in the "To" dropdown (select an option in
+                a select box tool).
+            12. Consider selecting a range of dates for departure to increase 
+                the chances of finding available flights (thinking tool).
+            13. Click the "Search" button (click on element tool).
+            14. If flights are available, review the options and select the most 
+                suitable flight based on price and timing (thinking tool).
+
+            REASONING:
+            The initial approach on a general travel booking website failed due
+            to no available flights for the specific date and route. Switching 
+            to a website that specializes in last-minute flights increases the 
+            chances of finding available options, as these platforms often have
+            access to unsold inventory or last-minute cancellations. By 
+            considering a flexible range of departure times and possibly dates,
+            the likelihood of finding an available flight is further improved.
+            This approach is more targeted and takes into account the urgency
+            and specific needs of booking a last-minute flight, thus addressing
+            the failure of the initial attempt.
         """
 
         plan_function = {
@@ -406,7 +457,8 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             - their memories about what they did in the past and what they learned
             - latest task: the task the user just performed
 
-            You respond with a reflection answering on the previous action.
+            You respond with a short one paragaph reflection answering on the 
+            previous action.
             What was the last action the user performed?
             What is the current situation of the user? 
             What does the current web page contain?

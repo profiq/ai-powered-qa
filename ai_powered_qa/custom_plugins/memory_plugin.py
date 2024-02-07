@@ -22,8 +22,8 @@ class MemoryPlugin(Plugin):
     @property
     def context_message(self) -> str:
         memories_output = ["YOUR MEMORIES: "]
-        for i, memory in enumerate(self.memory_records):
-            memories_output.append(f"MEMEORY {i+1} FROM PAGE {memory.page}:\n{memory.contents}\n")
+        for i, memory in enumerate(self.memory_records[-5:]):
+            memories_output.append(f"MEMORY {i+1}:\n{memory.contents}\n")
         return "\n".join(memories_output)
 
     @tool
