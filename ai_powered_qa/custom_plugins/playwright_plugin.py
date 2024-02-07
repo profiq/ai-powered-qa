@@ -128,39 +128,24 @@ class PlaywrightPlugin(Plugin):
         return f"Navigating to {url} returned status code {response.status if response else 'unknown'}"
 
     @tool
-    def click_element(self, selector: str, index: int = 0, timeout: int = 3_000) -> str:
+    def click_element(self, selector: str, timeout: int = 3_000) -> str:
         """
-        Click on an element with the given CSS selector
+        Click on an element with the given CSS selector.
 
-        :param str selector: CSS selector for the element to click
-        :param int index: Index of the element to click
+        :param str selector: CSS selector for the element to click. Be as specific as possible with the selector to ensure only one item is clicked.
         :param int timeout: Timeout for Playwright to wait for element to be ready.
         """
-        return self.run_async(self._click_element(selector, index, timeout))
+        return self.run_async(self._click_element(selector, timeout))
 
-    async def _click_element(
-        self, selector: str, index: int = 0, timeout: int = 3_000
-    ) -> str:
-        visible_only: bool = True
-
-        def _selector_effective(selector: str, index: int) -> str:
-            if not visible_only:
-                return selector
-            return f"{selector} >> visible=1 >> nth={index}"
-
-        playwright_strict: bool = False
+    async def _click_element(self, selector: str, timeout: int = 3_000) -> str:
         page = await self.ensure_page()
         try:
-            selector = _selector_effective(selector, index)
-            element_exists = await page.is_visible(selector)
-            if not element_exists:
-                return f"Unable to click on element '{selector}' as it does not exist"
             await page.click(
-                selector=_selector_effective(selector, index),
-                strict=playwright_strict,
+                selector=selector,
                 timeout=timeout,
             )
-        except TimeoutError:
+        except Exception as e:
+            print(e)
             return f"Unable to click on element '{selector}'"
 
         return f"Clicked element '{selector}'"
@@ -330,10 +315,10 @@ def clean_html(html_content):
     _remove_not_visible(soup)
     _remove_useless_tags(soup)
     _unwrap_single_child(soup)
-    html_clean = str(soup)
-    html_clean = _clean_attributes(html_clean)
-    html_clean = re.sub(r"<div[\s]*>[\s]*</div>", "", html_clean)
-    html_clean = re.sub(r"<!--[\s\S]*?-->", "", html_clean)
+    html_clean = soup.prettify()
+    # html_clean = _clean_attributes(html_clean)
+    # html_clean = re.sub(r"<div[\s]*>[\s]*</div>", "", html_clean)
+    # html_clean = re.sub(r"<!--[\s\S]*?-->", "", html_clean)
     # html_clean = html_clean.replace("<div", "<d").replace("</div>", "</d>")
     return html_clean
 

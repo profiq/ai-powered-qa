@@ -9,6 +9,8 @@ from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 SYSTEM_MESSAGE_KEY = "agent_system_message"
 HISTORY_NAME_KEY = "history_name"
 AGENT_NAME_KEY = "agent_name"
+AGENT_MODEL_KEY = "agent_model"
+TOOL_CALL_KEY = "tool_call"
 
 
 agent_store = AgentStore(
@@ -29,6 +31,7 @@ def load_agent():
         default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}},
     )
     st.session_state["agent_instance"] = _agent
+    st.session_state[AGENT_MODEL_KEY] = _agent.model
     st.session_state[SYSTEM_MESSAGE_KEY] = _agent.system_message
 
 
@@ -43,9 +46,14 @@ agent = st.session_state["agent_instance"]
 
 
 def on_commit(interaction):
+    # Clear the user message content
     st.session_state["user_message_content"] = None
+    # Use the agent message content that could be modified by the user
     interaction.agent_response.content = st.session_state["agent_message_content"]
+    # and clear it from state
     st.session_state["agent_message_content"] = None
+
+    # Use the tool calls that could be modified by the user and clear them from state
     if interaction.agent_response.tool_calls:
         for tool_call in interaction.agent_response.tool_calls:
             tool_call.function.name = st.session_state[f"{tool_call.id}_name"]
@@ -58,9 +66,17 @@ def on_commit(interaction):
     )
     agent_store.save_history(agent)
 
+    # Reset agent model after commit to save money
+    #  (you need to explicitly request the more expensive models)
+    st.session_state[AGENT_MODEL_KEY] = AVAILABLE_MODELS[0]
+    # Reset tool call back to 'auto' (not often you want the same tool call again)
+    st.session_state[TOOL_CALL_KEY] = "auto"
 
-agent.model = sidebar.selectbox("Model", AVAILABLE_MODELS)
-agent.system_message = sidebar.text_area("System message", agent.system_message)
+
+st.write(st.session_state)
+
+agent.model = sidebar.selectbox("Model", AVAILABLE_MODELS, key=AGENT_MODEL_KEY)
+agent.system_message = sidebar.text_area("System message", key=SYSTEM_MESSAGE_KEY)
 generate_empty = sidebar.checkbox(
     "Generate interaction even if user message is empty", False
 )
@@ -118,6 +134,7 @@ available_tool_names = [tool["function"]["name"] for tool in available_tools]
 tool_call = st.selectbox(
     "Tool call",
     ["auto", "none"] + available_tool_names,
+    key=TOOL_CALL_KEY,
 )
 
 # User message
