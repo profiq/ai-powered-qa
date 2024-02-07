@@ -73,8 +73,6 @@ def on_commit(interaction):
     st.session_state[TOOL_CALL_KEY] = "auto"
 
 
-st.write(st.session_state)
-
 agent.model = sidebar.selectbox("Model", AVAILABLE_MODELS, key=AGENT_MODEL_KEY)
 agent.system_message = sidebar.text_area("System message", key=SYSTEM_MESSAGE_KEY)
 generate_empty = sidebar.checkbox(

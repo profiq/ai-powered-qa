@@ -58,6 +58,16 @@ function updateElementScrollability() {
     });
 }
 window.updateElementScrollability = updateElementScrollability;
+
+function setValueAsDataAttribute() {
+  const inputs = document.querySelectorAll('input, textarea, select');
+
+  inputs.forEach(input => {
+    const value = input.value;
+    input.setAttribute('data-playwright-value', value);
+  });
+}
+window.setValueAsDataAttribute = setValueAsDataAttribute;
 """
 
 
@@ -105,6 +115,7 @@ class PlaywrightPlugin(Plugin):
             return "No page loaded yet."
         await page.evaluate("window.updateElementVisibility()")
         await page.evaluate("window.updateElementScrollability()")
+        await page.evaluate("window.setValueAsDataAttribute()")
         html_content = await page.content()
         stripped_html = clean_html(html_content)
         return stripped_html
@@ -242,12 +253,13 @@ class PlaywrightPlugin(Plugin):
     async def _scroll(self, selector: str, direction: str):
         page = await self.ensure_page()
         try:
+            window_height = await page.evaluate("window.innerHeight")
             bounds = await page.locator(selector).bounding_box()
             if not bounds:
                 return f"Unable to scroll in element '{selector}' as it does not exist"
             x = bounds["x"] + bounds["width"] / 2
             y = bounds["y"] + bounds["height"] / 2
-            delta = bounds["height"] * 0.8
+            delta = min(bounds["height"], window_height) * 0.8
             await page.mouse.move(x=x, y=y)
             if direction == "up":
                 await page.mouse.wheel(delta_y=-delta, delta_x=0)
@@ -315,11 +327,9 @@ def clean_html(html_content):
     _remove_not_visible(soup)
     _remove_useless_tags(soup)
     _unwrap_single_child(soup)
+    _clean_attributes(soup)
     html_clean = soup.prettify()
-    # html_clean = _clean_attributes(html_clean)
-    # html_clean = re.sub(r"<div[\s]*>[\s]*</div>", "", html_clean)
-    # html_clean = re.sub(r"<!--[\s\S]*?-->", "", html_clean)
-    # html_clean = html_clean.replace("<div", "<d").replace("</div>", "</d>")
+    html_clean = re.sub(r"[\s]*<!--[\s\S]*?-->[\s]*?", "", html_clean)
     return html_clean
 
 
@@ -339,31 +349,22 @@ def _remove_not_visible(soup: BeautifulSoup):
             element.decompose()
 
 
-def _clean_attributes(html: str) -> str:
-    regexes = [
-        r'class="[^"]*"',
-        r'style="[^"]*"',
-        r'data-(?!test|playwright-scrollable)[a-zA-Z\-]+="[^"]*"',
-        r'aria-[a-zA-Z\-]+="[^"]*"',
-        r'on[a-zA-Z\-]+="[^"]*"',
-        r'role="[^"]*"',
-        r'grow="[^"]*"',
-        r'transform="[^"]*"',
-        r'height="[^"]*"',
-        r'width="[^"]*"',
-        r'jsaction="[^"]*"',
-        r'jscontroller="[^"]*"',
-        r'jsrenderer="[^"]*"',
-        r'jsmodel="[^"]*"',
-        r'c-wiz="[^"]*"',
-        r'jsshadow="[^"]*"',
-        r'jsslot="[^"]*"',
-        r'dir"[^"]*"',
+def _clean_attributes(soup: BeautifulSoup) -> str:
+    allowed_attrs = [
+        "class",
+        "id",
+        "name",
+        "value",
+        "placeholder",
+        "data-test-id",
+        "data-playwright-scrollable",
+        "data-playwright-value",
     ]
-    for regex in regexes:
-        html = re.sub(regex, "", html)
 
-    return html
+    for element in soup.find_all(True):
+        element.attrs = element.attrs = {
+            key: value for key, value in element.attrs.items() if key in allowed_attrs
+        }
 
 
 def _unwrap_single_child(soup: BeautifulSoup):
@@ -380,7 +381,7 @@ def _unwrap_single_child(soup: BeautifulSoup):
             tag.unwrap()
 
 
-def _remove_useless_tags(soup):
+def _remove_useless_tags(soup: BeautifulSoup):
     tags_to_remove = [
         "path",
         "meta",
