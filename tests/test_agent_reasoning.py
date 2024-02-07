@@ -6,7 +6,7 @@ import json
 
 def test_agent_playwright_response():
     agent = Agent(
-        model="gpt-3.5-turbo-0125",
+        model="gpt-4-turbo-preview",
         agent_name="test_reasoning_agent",
         goal="Chci si najít jednopokojový byt v Ostravě na prodej na Bazos.cz",
     )
@@ -16,16 +16,19 @@ def test_agent_playwright_response():
     agent.add_plugin(memory_plugin)
 
     for _ in range(10):
-        plan_response = agent._plan()
-        steps = json.loads(plan_response.tool_calls[0].function.arguments)['steps']
-        plan = "\n".join([f"{s['step']} ({s['tool']})" for s in steps])
+        plan_response = agent._plan_tree_of_thoughts()
+        parsed_plan = json.loads(plan_response.tool_calls[0].function.arguments)
+        selected_plan = parsed_plan[f'plan_assistant_{parsed_plan["selected_plan"]}']
+        plan = "\n".join([f"{i+1}. {s}" for i, s in enumerate(selected_plan)])
+        print(plan)
         agent._execute_first_step(plan)
-        last_action = plan.split("\n")[0]
+        last_action = selected_plan[0]
         reflection = agent._reflect(last_action)
-        memory = "I PERFORMED THE FOLLOWING ACTION: " + last_action + "\n" + reflection
+        memory = (
+            "I PERFORMED THE FOLLOWING ACTION: " + last_action
+        )  # + "\n" + reflection
         memory_plugin.save_memory(page="Bazos.cz", contents=memory)
         print("---------")
-        print(plan)
         print(reflection)
         print(memory_plugin.context_message)
 

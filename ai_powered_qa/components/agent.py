@@ -378,9 +378,96 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         completion = self.client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0,
+            temperature=0.1,
             tools=[{"type": "function", "function": plan_function}],
             tool_choice={"type": "function", "function": {"name": "print_plan"}},
+        )
+
+        return completion.choices[0].message
+
+    def _plan_tree_of_thoughts(self, model: str | None = None) -> str:
+        model = model or self.model
+
+        tools = "\n".join(
+            [
+                f"- {t['function']['name']} ({t['function']['description']})"
+                for t in self.get_tools_from_plugins()
+            ]
+        )
+
+        prompt = f"""
+        You have the following information about what the user sees in the web browser
+        and what they did in the past.
+
+        {self._generate_context_message()}
+
+        Imagine, there are three different web assitants trying to solve the following
+        high-level goal:
+
+        {self.goal}
+
+        Each assistant can use one of the following tools:
+
+        {tools}
+
+        Each assistant 3 next steps to perform in order to get closer to the goal. The plans should
+        reflect what the user sees and what they did in the past. They should avoid repeating the 
+        same steps that have already been done. They should consider the suggestions from the last memory.
+        Each assistant has to compe up with a different plan.
+
+        You will show the plan of each assistant and then select a plan that is most likely to lead
+        to a correct solution. The selected plan should be deterministic and should be the least risky
+        Provide reasoning for your choice.
+        """
+
+        plan_function = {
+            "name": "print_plans",
+            "description": "Prints all plans and the least risky selection for the user",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "plan_assistant_1": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "description": "Short human readable description of each step, for example: 'Click on the search button'",
+                        },
+                    },
+                    "plan_assistant_2": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "description": "Short human readable description of each step, for example: 'Click on the search button'",
+                        },
+                    },
+                    "plan_assistant_3": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "description": "Short human readable description of each step, for example: 'Click on the search button'",
+                        },
+                    },
+                    "selected_plan": {
+                        "type": "integer",
+                        "description": "Which plan was selected as the least risky",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "The reasoning behind the selection of a given plan",
+                    },
+                },
+                "required": ["plans", "selected_plan", "reasoning"],
+            },
+        }
+
+        messages = [{"role": "user", "content": prompt}]
+
+        completion = self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.05,
+            tools=[{"type": "function", "function": plan_function}],
+            tool_choice={"type": "function", "function": {"name": "print_plans"}},
         )
 
         return completion.choices[0].message
@@ -507,8 +594,6 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             LAST ACTION:
             {last_action}
         """
-
-        print(system_prompt, prompt)
 
         messages = [
             {"role": "system", "content": system_prompt},
