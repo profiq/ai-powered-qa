@@ -2,6 +2,10 @@ import asyncio
 import json
 import re
 
+from typing import Any
+from openai import OpenAI
+from pydantic import Field
+
 import playwright.async_api
 import playwright.sync_api
 from bs4 import BeautifulSoup
@@ -70,9 +74,26 @@ function setValueAsDataAttribute() {
 window.setValueAsDataAttribute = setValueAsDataAttribute;
 """
 
+describe_html_system_message = """You are an HTML interpreter assisting in web automation. Given HTML code of a page, you should return a natural language description of how the page probably looks.
+Be specific and exhaustive. 
+Mention all elements that can be interactive.
+Describe the state of all form elements, the value of each input is provided as the `data-playwright-value` attribute.
+"""
+
+context_template = """Here is the HTML of the current page:
+```html
+{html}
+```
+And here is a description of the page:
+{description}
+
+"""
+
 
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
+
+    client: Any = Field(default_factory=OpenAI, exclude=True)
 
     _playwright: playwright.async_api.Playwright
     _browser: playwright.async_api.Browser
@@ -107,7 +128,22 @@ class PlaywrightPlugin(Plugin):
     def context_message(self) -> str:
         html = self.run_async(self._get_page_content())
         self.screenshot()
-        return f"Current page content:\n\n ```\n{html}\n```"
+        if html.startswith("No page loaded yet."):
+            return context_template.format(
+                html=html,
+                description="The browser is empty",
+            )
+        completion = self.client.chat.completions.create(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "system", "content": describe_html_system_message},
+                {"role": "assistant", "content": html},
+            ],
+        )
+        return context_template.format(
+            html=html,
+            description=completion.choices[0].message.content,
+        )
 
     async def _get_page_content(self):
         page = await self.ensure_page()
@@ -326,7 +362,7 @@ def clean_html(html_content):
     soup = BeautifulSoup(html_content, "html.parser")
     _remove_not_visible(soup)
     _remove_useless_tags(soup)
-    _unwrap_single_child(soup)
+    # _unwrap_single_child(soup)
     _clean_attributes(soup)
     html_clean = soup.prettify()
     html_clean = re.sub(r"[\s]*<!--[\s\S]*?-->[\s]*?", "", html_clean)
