@@ -1,8 +1,6 @@
 import os
-from pydantic import field_validator
 
 from ai_powered_qa.components.plugin import Plugin, tool
-from ai_powered_qa.components.agent import Agent
 
 
 class FileSystemPlugin(Plugin):
@@ -10,11 +8,6 @@ class FileSystemPlugin(Plugin):
     root_directory: str
     _directory: str = ""
     _current_file: str = ""
-
-    # @field_validator("root_directory")
-    # @classmethod
-    # def root_directory_validator(cls, v: str) -> str:
-    #     return f"{os.path.abspath(v)}"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -28,22 +21,6 @@ class FileSystemPlugin(Plugin):
             context += f"Current file: {self._current_file}\n\n"
             context += f"Current file contents:\n```\n{open(os.path.join(self.root_directory, self._current_file)).read()}```\n"
         return context
-
-    # @tool
-    # def change_directory(self, directory: str):
-    #     """
-    #     Changes the current working directory.
-
-    #     :param str directory: The directory to change to, relative to current working directory.
-    #     """
-    #     if directory == "..":
-    #         full_directory = os.path.join(self.root_directory, self._directory)
-    #         self._directory = os.path.dirname(full_directory).removeprefix(
-    #             self.root_directory
-    #         )
-    #     else:
-    #         self._directory = os.path.join(self._directory, directory)
-    #     return f"Changed directory to: {self._directory}"
 
     @tool
     def open_file(self, file: str):
