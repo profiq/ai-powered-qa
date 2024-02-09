@@ -1,10 +1,11 @@
 import json
+import os
 
 import streamlit as st
 
 from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
-from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
+from ai_powered_qa.custom_plugins.file_system_plugin import FileSystemPlugin
 from ai_powered_qa.custom_plugins.planning_plugin import PlanningPlugin
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
@@ -17,7 +18,7 @@ TOOL_CALL_KEY = "tool_call"
 agent_store = AgentStore(
     "agents",
     name_to_plugin_class={
-        "PlaywrightPlugin": PlaywrightPlugin,
+        "FileSystemPlugin": FileSystemPlugin,
         "PlanningPlugin": PlanningPlugin,
     },
 )
@@ -30,7 +31,13 @@ def load_agent():
     _agent_name = st.session_state[AGENT_NAME_KEY]
     _agent = agent_store.load_agent(
         _agent_name,
-        default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}},
+        default_kwargs={
+            "plugins": {
+                "FileSystemPlugin": FileSystemPlugin(
+                    root_directory=os.path.join(os.getcwd(), "data")
+                )
+            }
+        },
     )
     st.session_state["agent_instance"] = _agent
     st.session_state[AGENT_MODEL_KEY] = _agent.model
@@ -38,7 +45,7 @@ def load_agent():
 
 
 agent_name = sidebar.text_input(
-    "Agent name", value="test_agent", key=AGENT_NAME_KEY, on_change=load_agent
+    "Agent name", value="fs_agent", key=AGENT_NAME_KEY, on_change=load_agent
 )
 
 if not "agent_instance" in st.session_state:
@@ -93,6 +100,14 @@ def load_history():
 
     history = agent_store.load_history(agent, history_name)
     agent.reset_history(history, history_name)
+
+
+def reload_agent():
+    load_agent()
+    load_history()
+
+
+sidebar.button("Reload agent", on_click=reload_agent)
 
 
 history_name = st.text_input(
@@ -164,9 +179,7 @@ context_message = (
 
 
 with st.chat_message("user"):
-    st.write("**Context message**")
     st.write(context_message["content"])
-    st.image(agent.plugins["PlaywrightPlugin"].buffer)
 
 agent_store.save_interaction(agent, interaction)
 

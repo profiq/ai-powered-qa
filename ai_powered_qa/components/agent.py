@@ -3,7 +3,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializeAsAny
 
 from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
@@ -29,7 +29,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     # Agent configuration
     system_message: str = Field(default="You are a helpful assistant.")
-    plugins: dict[str, Plugin] = Field(default_factory=dict)
+    plugins: dict[str, SerializeAsAny[Plugin]] = Field(default_factory=dict)
 
     # Agent state
     history_name: str = Field(default_factory=generate_short_id, exclude=True)
@@ -114,10 +114,13 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
                 p: Plugin
                 for p in self.plugins.values():
                     # iterate all plugins until the plugin with correct tool is found
+                    print(f"\nAgent calling tool: {tool_call.function.name}")
+                    print(f"From plugin: {p}")
                     result = p.call_tool(
                         tool_call.function.name,
                         **json.loads(tool_call.function.arguments),
                     )
+                    print(f"Result: {result}\n")
                     if result is not None:
                         break
                 else:
@@ -184,4 +187,4 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
-        return "\n\n".join(contexts)
+        return "=== CONTEXT_MESSAGE ===\n\n" + "\n\n".join(contexts)

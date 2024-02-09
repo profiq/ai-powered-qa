@@ -57,6 +57,9 @@ class Plugin(BaseModel, ABC):
                 break
 
     def call_tool(self, tool_name: str, **kwargs):
+        print(f"\nCalling tool: {tool_name}")
+        print(f"From plugin: {self}")
+        print(f"Tools: {self._callable_tools}\n")
         if tool_name not in self._callable_tools:
             return None
         return self._callable_tools[tool_name](**kwargs)
@@ -104,7 +107,13 @@ class Plugin(BaseModel, ABC):
         return required_params
 
     def reset_history(self, history):
-        pass
+        for message in history:
+            if "tool_calls" in message:
+                for tool_call in message["tool_calls"]:
+                    self.call_tool(
+                        tool_call["function"]["name"],
+                        **json.loads(tool_call["function"]["arguments"]),
+                    )
 
 
 class RandomNumberPlugin(Plugin):
