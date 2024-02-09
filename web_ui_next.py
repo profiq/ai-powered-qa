@@ -5,6 +5,8 @@ import streamlit as st
 from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
+from ai_powered_qa.custom_plugins.website_explorer import WebsiteExplorer
+from ai_powered_qa.custom_plugins.memory_plugin import MemoryPlugin
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
 HISTORY_NAME_KEY = "history_name"
@@ -16,6 +18,8 @@ def get_agent_store():
         "agents",
         name_to_plugin_class={
             "PlaywrightPlugin": PlaywrightPlugin,
+            # "WebsiteExplorer": WebsiteExplorer,
+            "MemoryPlugin": MemoryPlugin,
         },
     )
 
@@ -26,7 +30,14 @@ agent_store = get_agent_store()
 @st.cache_resource
 def get_agent(agent_name):
     new_agent = agent_store.load_agent(
-        agent_name, default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}}
+        agent_name,
+        default_kwargs={
+            "plugins": {
+                "PlaywrightPlugin": PlaywrightPlugin(),
+                # "WebsiteExplorer": WebsiteExplorer(),
+                "MemoryPlugin": MemoryPlugin(),
+            }
+        },
     )
     st.session_state[SYSTEM_MESSAGE_KEY] = new_agent.system_message
     return new_agent
