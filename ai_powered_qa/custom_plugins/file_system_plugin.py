@@ -19,13 +19,21 @@ class FileSystemPlugin(Plugin):
         context += "```\n"
         if self._current_file:
             context += f"Current file: {self._current_file}\n\n"
-            context += f"Current file contents:\n```\n{open(os.path.join(self.root_directory, self._current_file)).read()}```\n"
+            context += f"Current file contents:\n```\n"
+            file_content = open(
+                os.path.join(self.root_directory, self._current_file)
+            ).read()
+            if file_content == "":
+                context += "The current file is empty.\n"
+            else:
+                context += f"{file_content}\n"
+            context += "```\n"
         return context
 
     @tool
     def open_file(self, file: str):
         """
-        Open a file if you need the contents to respond to the user. You can create a new file by providing a path that doesn't exist.
+        Change the currently open file if you need the contents to respond to the user. You can create a new file by providing a path that doesn't exist. Only one file can be open at any time.
 
         :param str file: Path to the file you want to open.
         """

@@ -13,7 +13,7 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "daily/2024-02-05.md",
+                "file": "projects/Series A Funding Pitch.md",
                 "mode": "source",
                 "source": false
               }
@@ -85,7 +85,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "daily/2024-02-05.md",
+                "file": "projects/Series A Funding Pitch.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -102,7 +102,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "daily/2024-02-05.md",
+                "file": "projects/Series A Funding Pitch.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               }
@@ -125,7 +125,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "daily/2024-02-05.md"
+                "file": "projects/Series A Funding Pitch.md"
               }
             }
           }
@@ -148,17 +148,18 @@
   },
   "active": "6765fd5074dfbc5d",
   "lastOpenFiles": [
-    "resources/Innovative Image Generation.md",
-    "daily/2024-02-05.md",
-    "daily/2024-02-04.md",
+    "resources/2024-02-05 2PM - investor meeting.md",
+    "projects/Series A Funding Pitch.md",
     "resources/Tech Innovators Daily - Revolutionizing Customer Service with AI.md",
+    "daily/2024-02-05.md",
     "resources/Releasing our image generator v3.md",
+    "resources/Innovative Image Generation.md",
+    "daily/2024-02-04.md",
     "projects/Image Generator v3.md",
     "resources/Data volume is the key.md",
     "projects/AI Engine Development Project.md",
     "resources",
     "projects/Sales Lead Hiring.md",
-    "projects/Series A Funding Pitch.md",
     "projects",
     "daily"
   ]

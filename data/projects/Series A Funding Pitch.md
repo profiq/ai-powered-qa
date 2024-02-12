@@ -24,9 +24,9 @@ The goal for StreamlineAI is to revolutionize the AI space by introducing an adv
 
 ### Upcoming Meetings
 
-- Important investor call on [[2024-02-05 2:00 PM]] to discuss our value and vision.
+- Important [[2024-02-05 2PM - investor meeting|investor call]] on Monday to discuss our value and vision.
 
 ### My Tasks
 
-- [ ] Review and refine pitch based on today's discussions in the AI Engine Development meeting.
+- [x] Review and refine pitch based on today's discussions in the AI Engine Development meeting.
 - [ ] Ensure all team members are aligned on the investor call and topics.
