@@ -79,6 +79,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         )
         request_params = {
             "model": model,
+            "temperature": 0,
             "messages": messages,
             "tool_choice": (
                 tool_choice
