@@ -17,19 +17,40 @@ js_function = """
 function updateElementVisibility() {
     const visibilityAttribute = 'data-playwright-visible';
 
+    // Remove the visibility attribute from elements that were previously marked
     const previouslyMarkedElements = document.querySelectorAll('[' + visibilityAttribute + ']');
     previouslyMarkedElements.forEach(el => el.removeAttribute(visibilityAttribute));
 
+    // Function to check if an element is visible in the viewport
     function isElementVisibleInViewport(el) {
         const rect = el.getBoundingClientRect();
         const windowHeight = (window.innerHeight || document.documentElement.clientHeight);
         const windowWidth = (window.innerWidth || document.documentElement.clientWidth);
-        return (
-            rect.top >= 0 && rect.top <= windowHeight && rect.height > 0 &&
-            rect.left >= 0 && rect.left <= windowWidth && rect.width > 0
-        );
+
+        const hasSize = rect.width > 0 && rect.height > 0;
+
+        const startsWithinVerticalBounds = rect.top >= 0 && rect.top <= windowHeight;
+        const endsWithinVerticalBounds = rect.bottom >= 0 && rect.bottom <= windowHeight;
+        const overlapsVerticalBounds = rect.top <= 0 && rect.bottom >= windowHeight;
+
+        const startsWithinHorizontalBounds = rect.left >= 0 && rect.left <= windowWidth;
+        const endsWithinHorizontalBounds = rect.right >= 0 && rect.right <= windowWidth;
+        const overlapsHorizontalBounds = rect.left <= 0 && rect.right >= windowWidth;
+
+        const verticalOverlap = startsWithinVerticalBounds || endsWithinVerticalBounds || overlapsVerticalBounds;
+        const horizontalOverlap = startsWithinHorizontalBounds || endsWithinHorizontalBounds || overlapsHorizontalBounds;
+
+        const isInViewport = hasSize && verticalOverlap && horizontalOverlap;
+
+        // Get computed styles to check for visibility and opacity
+        const style = window.getComputedStyle(el);
+        const isVisible = style.opacity !== '0' && style.visibility !== 'hidden';
+
+        // The element is considered visible if it's within the viewport and not explicitly hidden or fully transparent
+        return isInViewport && isVisible;
     }
 
+    // Check all elements in the document
     const allElements = document.querySelectorAll('*');
     allElements.forEach(el => {
         if (isElementVisibleInViewport(el)) {
@@ -46,15 +67,22 @@ function updateElementScrollability() {
     const previouslyMarkedElements = document.querySelectorAll('[' + scrollableAttribute + ']');
     previouslyMarkedElements.forEach(el => el.removeAttribute(scrollableAttribute));
 
+    function isWindowScrollable() {
+        return document.documentElement.scrollHeight > window.innerHeight;
+    }
+
     // Function to check if an element is scrollable
     function isElementScrollable(el) {
-        const hasScrollableContent = el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth;
-        const overflowStyle = window.getComputedStyle(el).overflow + window.getComputedStyle(el).overflowX + window.getComputedStyle(el).overflowY;
+        if (el === document.body) {
+            return isWindowScrollable();
+        }
+        const hasScrollableContent = el.scrollHeight > el.clientHeight;
+        const overflowStyle = window.getComputedStyle(el).overflow + window.getComputedStyle(el).overflowX;
         return hasScrollableContent && /(auto|scroll)/.test(overflowStyle);
     }
 
     // Mark all scrollable elements
-    const allElements = document.querySelectorAll('*');
+    const allElements = document.querySelectorAll('[data-playwright-visible]');
     allElements.forEach(el => {
         if (isElementScrollable(el)) {
             el.setAttribute(scrollableAttribute, 'true');
@@ -78,6 +106,7 @@ describe_html_system_message = """You are an HTML interpreter assisting in web a
 Be specific and exhaustive. 
 Mention all elements that can be interactive.
 Describe the state of all form elements, the value of each input is provided as the `data-playwright-value` attribute.
+Mention all elements that are scrollable (these are marked with the `data-playwright-scrollable` attribute).
 """
 
 context_template = """Here is the HTML of the current page:
@@ -85,8 +114,9 @@ context_template = """Here is the HTML of the current page:
 {html}
 ```
 And here is a description of the page:
+```text
 {description}
-
+```
 """
 
 
@@ -135,6 +165,7 @@ class PlaywrightPlugin(Plugin):
             )
         completion = self.client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
+            temperature=0,
             messages=[
                 {"role": "system", "content": describe_html_system_message},
                 {"role": "assistant", "content": html},
@@ -198,16 +229,15 @@ class PlaywrightPlugin(Plugin):
         return f"Clicked element '{selector}'"
 
     @tool
-    def fill_element(self, selector: str, text: str, timeout: int = 3000):
+    def fill_element(self, selector: str, text: str):
         """
-        Text input on element in the current web page matching the text content
+        Fill a text input element with a specific text
 
-        :param str selector: Selector for the element by text content.
-        :param str text: Text what you want to fill up.
-        :param int timeout: Timeout for Playwright to wait for element to be ready.
+        :param str selector: Selector for the input element you want to fill in.
+        :param str text: Text you want to fill in.
         """
 
-        return self.run_async(self._fill_element(selector, text, timeout))
+        return self.run_async(self._fill_element(selector, text))
 
     async def _fill_element(self, selector: str, text: str, timeout: int = 3000):
         page = await self.ensure_page()
@@ -236,45 +266,45 @@ class PlaywrightPlugin(Plugin):
             return f"Unable to select option '{value}' on element '{selector}'."
         return f"Option '{value}' on element '{selector}' was successfully selected."
 
-    @tool
-    def assert_that(self, selector: str, action: str, value: str = None):
-        """
-        Perform an assertion on an element based on its text content.
+    # @tool
+    # def assert_that(self, selector: str, action: str, value: str = None):
+    #     """
+    #     Perform an assertion on an element based on its text content.
 
-        :param str selector: Selector for the element identified by its text content.
-        :param str action: [
-                  {
-                    "option": "is_visible",
-                    "description": "Check if the element is displayed in the content.",
-                  },
-                  {
-                    "option": "contain_text",
-                    "description": "Check if the element contains the specified text content.",
-                  }
-                ]
-        :param str value: Text to comparing in action contain_text or None.
-        """
-        return self.run_async(self._assert_that(selector, action, value))
+    #     :param str selector: Selector for the element identified by its text content.
+    #     :param str action: [
+    #               {
+    #                 "option": "is_visible",
+    #                 "description": "Check if the element is displayed in the content.",
+    #               },
+    #               {
+    #                 "option": "contain_text",
+    #                 "description": "Check if the element contains the specified text content.",
+    #               }
+    #             ]
+    #     :param str value: Text to comparing in action contain_text or None.
+    #     """
+    #     return self.run_async(self._assert_that(selector, action, value))
 
-    async def _assert_that(self, selector: str, action: str, value: str = None):
-        page = await self.ensure_page()
+    # async def _assert_that(self, selector: str, action: str, value: str = None):
+    #     page = await self.ensure_page()
 
-        if action == "is_visible":
-            state = await page.locator(selector).is_visible()
-            result_message = (
-                f"{selector} is {'visible' if state else 'not visible'} in context."
-            )
-        elif action == "contain_text":
-            text = await page.inner_text(selector)
-            if text == "":
-                text = await page.locator(selector).get_attribute("value")
-            result_message = (
-                f"{selector} {'contains' if value == text else 'does not contain'} '{value}', "
-                f"actual value: '{text}'."
-            )
-        else:
-            return "Not implemented action"
-        return f"Action '{action}' was successfully performed: {result_message}"
+    #     if action == "is_visible":
+    #         state = await page.locator(selector).is_visible()
+    #         result_message = (
+    #             f"{selector} is {'visible' if state else 'not visible'} in context."
+    #         )
+    #     elif action == "contain_text":
+    #         text = await page.inner_text(selector)
+    #         if text == "":
+    #             text = await page.locator(selector).get_attribute("value")
+    #         result_message = (
+    #             f"{selector} {'contains' if value == text else 'does not contain'} '{value}', "
+    #             f"actual value: '{text}'."
+    #         )
+    #     else:
+    #         return "Not implemented action"
+    #     return f"Action '{action}' was successfully performed: {result_message}"
 
     @tool
     def scroll(self, selector: str, direction: str):
