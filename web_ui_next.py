@@ -4,7 +4,15 @@ import streamlit as st
 
 from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
-from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
+from ai_powered_qa.custom_plugins.playwright_plugin.base import PlaywrightPlugin
+from ai_powered_qa.custom_plugins.playwright_plugin.html_paging import (
+    PlaywrightPluginHtmlPaging,
+)
+from ai_powered_qa.custom_plugins.playwright_plugin.only_visible import (
+    PlaywrightPluginOnlyVisible,
+)
+
+DEFAULT_PLAYWRIGHT_PLUGIN = "PlaywrightPluginOnlyVisible"
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
 HISTORY_NAME_KEY = "history_name"
@@ -13,12 +21,13 @@ AGENT_MODEL_KEY = "agent_model"
 TOOL_CALL_KEY = "tool_call"
 
 
-agent_store = AgentStore(
-    "agents",
-    name_to_plugin_class={
-        "PlaywrightPlugin": PlaywrightPlugin,
-    },
-)
+NAME_TO_PLUGIN_CLASS = {
+    "PlaywrightPlugin": PlaywrightPlugin,
+    "PlaywrightPluginHtmlPaging": PlaywrightPluginHtmlPaging,
+    "PlaywrightPluginOnlyVisible": PlaywrightPluginOnlyVisible,
+}
+
+agent_store = AgentStore("agents", name_to_plugin_class=NAME_TO_PLUGIN_CLASS)
 
 
 sidebar = st.sidebar
@@ -28,7 +37,13 @@ def load_agent():
     _agent_name = st.session_state[AGENT_NAME_KEY]
     _agent = agent_store.load_agent(
         _agent_name,
-        default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}},
+        default_kwargs={
+            "plugins": {
+                DEFAULT_PLAYWRIGHT_PLUGIN: NAME_TO_PLUGIN_CLASS[
+                    DEFAULT_PLAYWRIGHT_PLUGIN
+                ]()
+            }
+        },
     )
     st.session_state["agent_instance"] = _agent
     st.session_state[AGENT_MODEL_KEY] = _agent.model
@@ -164,7 +179,7 @@ context_message = (
 with st.chat_message("user"):
     st.write("**Cotext message**")
     st.write(context_message["content"])
-    st.image(agent.plugins["PlaywrightPlugin"].buffer)
+    st.image(agent.plugins[DEFAULT_PLAYWRIGHT_PLUGIN].buffer)
 
 agent_store.save_interaction(agent, interaction)
 

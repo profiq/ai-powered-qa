@@ -33,6 +33,7 @@ class PlaywrightPluginHtmlPaging(base.PlaywrightPlugin):
             html, max_parts = self._get_html_part(html)
         except base.PageNotLoadedException:
             html = "No page loaded yet."
+            max_parts = 1
             description = "The browser is empty"
         else:
             description = self._get_html_description(html)

@@ -172,6 +172,7 @@ class PlaywrightPlugin(Plugin):
                 "name": "assert_that",
                 "description": "Perform an assertion on an element based on its text content",
                 "parameters": {
+                    "type": "object",
                     "properties": {
                         "selector": {
                             "type": "string",
