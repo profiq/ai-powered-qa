@@ -4,15 +4,15 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel, Field
-
-from ai_powered_qa.components.interaction import Interaction
-from ai_powered_qa.components.plugin import Plugin
-from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
-from .utils import generate_short_id, md5, count_tokens
 import yaml
 
-load_dotenv()
+from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
+from ai_powered_qa.components.interaction import Interaction
+from ai_powered_qa.components.plugin import Plugin
 
+from .utils import count_tokens, generate_short_id, md5
+
+load_dotenv()
 
 AVAILABLE_MODELS = ["gpt-3.5-turbo-1106", "gpt-4-1106-preview"]
 

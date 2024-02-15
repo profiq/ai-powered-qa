@@ -12,6 +12,7 @@ def clean_attributes(soup: BeautifulSoup, classes: bool = True) -> str:
         "data-testid",
         "data-playwright-scrollable",
         "data-playwright-value",
+        "href"
     ]
 
     if not classes:
@@ -36,7 +37,7 @@ def remove_useless_tags(soup: BeautifulSoup):
         t.decompose()
 
 
-def remove_not_visible(soup: BeautifulSoup):
+def remove_invisible(soup: BeautifulSoup):
     to_keep = set()
     visible_elements = soup.find_all(attrs={"data-playwright-visible": True})
     for element in visible_elements:

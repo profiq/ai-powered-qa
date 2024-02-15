@@ -2,7 +2,6 @@ from ai_powered_qa.components.agent import Agent
 from ai_powered_qa.components.plugin import RandomNumberPlugin
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 
-
 def test_agent_playwright_response():
     agent = Agent(agent_name="test_agent_with_playwright")
     plugin = PlaywrightPlugin()
