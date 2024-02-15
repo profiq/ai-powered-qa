@@ -129,7 +129,7 @@ class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
             print(e)
             return f"Unable to scroll. {e}"
         return f"Scrolling in {direction} direction was successfully performed."
-
+    
     @staticmethod
     def _clean_html(html: str) -> str:
         """
@@ -143,3 +143,4 @@ class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
         html_clean = soup.prettify()
         html_clean = clean_html.remove_comments(html_clean)
         return html_clean
+
