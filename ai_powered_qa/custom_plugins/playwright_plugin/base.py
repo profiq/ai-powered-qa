@@ -3,14 +3,15 @@ from inspect import cleandoc
 import json
 from typing import Any
 
+from bs4 import BeautifulSoup
 from openai import OpenAI
 import playwright.async_api
 from pydantic import Field
-from bs4 import BeautifulSoup
-from . import clean_html
 
 from ai_powered_qa import config
 from ai_powered_qa.components.plugin import Plugin, tool
+
+from . import clean_html
 
 
 class PageNotLoadedException(Exception):
@@ -47,10 +48,10 @@ class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
     client: Any = Field(default_factory=OpenAI, exclude=True)
 
-    _playwright: playwright.async_api.Playwright
-    _browser: playwright.async_api.Browser
-    _page: playwright.async_api.Page
-    _buffer: bytes
+    _playwright: playwright.async_api.Playwright | None
+    _browser: playwright.async_api.Browser | None
+    _page: playwright.async_api.Page | None
+    _buffer: bytes | None
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -83,7 +84,7 @@ class PlaywrightPlugin(Plugin):
 
     @property
     def buffer(self) -> bytes:
-        return bytes(self._buffer)
+        return bytes(self._buffer) if self._buffer else b""
 
     @tool
     def navigate_to_url(self, url: str):
@@ -139,7 +140,9 @@ class PlaywrightPlugin(Plugin):
     async def _fill_element(self, selector: str, text: str):
         page = await self._ensure_page()
         try:
-            await page.locator(selector).first.fill(text, timeout=config.PLAYWRIGHT_TIMEOUT)
+            await page.locator(selector).first.fill(
+                text, timeout=config.PLAYWRIGHT_TIMEOUT
+            )
         except Exception as e:
             print(e)
             return f"Unable to fill element. {e}"
@@ -164,7 +167,24 @@ class PlaywrightPlugin(Plugin):
         return f"Option '{value}' on element '{selector}' was successfully selected."
 
     @tool
-    def assert_that(self, selector: str, action: str, value: str = None):
+    def press_enter(self):
+        """
+        Press the Enter key. This can be useful for submitting forms that 
+        don't have a submit button.
+        """
+        return self._run_async(self._press_enter())
+
+    async def _press_enter(self):
+        page = await self._ensure_page()
+        try:
+            await page.keyboard.press("Enter")
+        except Exception as e:
+            print(e)
+            return f"Unable to press Enter. {e}"
+        return "Enter key was successfully pressed."
+
+    @tool
+    def assert_that(self, selector: str, action: str, value: str | None = None):
         """
         {
             "type": "function",
@@ -195,7 +215,7 @@ class PlaywrightPlugin(Plugin):
         """
         return self._run_async(self._assert_that(selector, action, value))
 
-    async def _assert_that(self, selector: str, action: str, value: str = None):
+    async def _assert_that(self, selector: str, action: str, value: str | None = None):
         page = await self._ensure_page()
         if action == "is_visible":
             visible = await page.locator(selector).first.is_visible()

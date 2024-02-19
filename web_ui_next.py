@@ -30,6 +30,18 @@ NAME_TO_PLUGIN_CLASS = {
 agent_store = AgentStore("agents", name_to_plugin_class=NAME_TO_PLUGIN_CLASS)
 
 
+st.write(
+    """
+    <style>
+        pre:has(code.language-html) {
+            max-height: 500px;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 sidebar = st.sidebar
 
 
