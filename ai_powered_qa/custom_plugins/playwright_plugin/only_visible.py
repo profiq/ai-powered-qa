@@ -1,7 +1,10 @@
 from inspect import cleandoc
+import logging
+from os import wait
 
 from bs4 import BeautifulSoup
-import playwright
+import playwright.async_api
+from playwright.async_api import Error
 
 from ai_powered_qa.components.plugin import tool
 
@@ -81,9 +84,22 @@ class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
         page = await self._ensure_page()
         if page.url == "about:blank":
             raise PageNotLoadedException("No page loaded yet.")
-        await page.evaluate("window.updateElementVisibility()")
-        await page.evaluate("window.updateElementScrollability()")
-        await page.evaluate("window.setValueAsDataAttribute()")
+        try:
+            await page.evaluate("window.updateElementVisibility()")
+            await page.evaluate("window.updateElementScrollability()")
+            await page.evaluate("window.setValueAsDataAttribute()")
+        except Error as e:
+            if (
+                e.message
+                == "Execution context was destroyed, most likely because of a navigation"
+            ):
+                logging.warning("Execution context was destroyed")
+                await page.wait_for_url(page.url, wait_until="domcontentloaded")
+                await page.evaluate("window.updateElementVisibility()")
+                await page.evaluate("window.updateElementScrollability()")
+                await page.evaluate("window.setValueAsDataAttribute()")
+            else:
+                raise e
         html = await page.content()
         html_clean = self._clean_html(html)
         return html_clean
@@ -129,7 +145,7 @@ class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
             print(e)
             return f"Unable to scroll. {e}"
         return f"Scrolling in {direction} direction was successfully performed."
-    
+
     @staticmethod
     def _clean_html(html: str) -> str:
         """
@@ -143,4 +159,3 @@ class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
         html_clean = soup.prettify()
         html_clean = clean_html.remove_comments(html_clean)
         return html_clean
-

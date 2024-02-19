@@ -97,7 +97,7 @@ class PlaywrightPlugin(Plugin):
     async def _navigate_to_url(self, url: str):
         page = await self._ensure_page()
         try:
-            response = await page.goto(url)
+            response = await page.goto(url, wait_until="domcontentloaded")
         except Exception as e:
             print(e)
             return f"Unable to navigate to {url}."
@@ -119,7 +119,7 @@ class PlaywrightPlugin(Plugin):
     async def _click_element(self, selector: str) -> str:
         page = await self._ensure_page()
         try:
-            await page.click(selector=selector, timeout=config.PLAYWRIGHT_TIMEOUT)
+            await page.locator(selector).first.click(timeout=config.PLAYWRIGHT_TIMEOUT)
         except Exception as e:
             print(e)
             return f"Unable to click on element '{selector}'"
@@ -139,7 +139,7 @@ class PlaywrightPlugin(Plugin):
     async def _fill_element(self, selector: str, text: str):
         page = await self._ensure_page()
         try:
-            await page.locator(selector).fill(text, timeout=config.PLAYWRIGHT_TIMEOUT)
+            await page.locator(selector).first.fill(text, timeout=config.PLAYWRIGHT_TIMEOUT)
         except Exception as e:
             print(e)
             return f"Unable to fill element. {e}"
@@ -158,7 +158,7 @@ class PlaywrightPlugin(Plugin):
     async def _select_option(self, selector: str, value: str):
         page = await self._ensure_page()
         try:
-            await page.select_option(selector, value)
+            await page.locator(selector).first.select_option(value)
         except Exception:
             return f"Unable to select option '{value}' on element '{selector}'."
         return f"Option '{value}' on element '{selector}' was successfully selected."
@@ -198,12 +198,12 @@ class PlaywrightPlugin(Plugin):
     async def _assert_that(self, selector: str, action: str, value: str = None):
         page = await self._ensure_page()
         if action == "is_visible":
-            visible = await page.locator(selector).is_visible()
+            visible = await page.locator(selector).first.is_visible()
             result_message = f"{selector} is {'not ' if not visible else ''}visible."
         elif action == "contain_text":
             text = await page.inner_text(selector)
             if text == "":
-                text = await page.locator(selector).get_attribute("value")
+                text = await page.locator(selector).first.get_attribute("value")
             contain_string = "contains" if value == text else "does not contain"
             result_message = (
                 f"{selector} {contain_string} {value}', ",
