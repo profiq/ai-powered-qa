@@ -1,6 +1,5 @@
 from inspect import cleandoc
 import logging
-from os import wait
 
 from bs4 import BeautifulSoup
 import playwright.async_api
@@ -16,19 +15,40 @@ JS_FUNCTIONS = cleandoc(
     function updateElementVisibility() {
         const visibilityAttribute = 'data-playwright-visible';
 
+        // Remove the visibility attribute from elements that were previously marked
         const previouslyMarkedElements = document.querySelectorAll('[' + visibilityAttribute + ']');
         previouslyMarkedElements.forEach(el => el.removeAttribute(visibilityAttribute));
 
+        // Function to check if an element is visible in the viewport
         function isElementVisibleInViewport(el) {
             const rect = el.getBoundingClientRect();
             const windowHeight = (window.innerHeight || document.documentElement.clientHeight);
             const windowWidth = (window.innerWidth || document.documentElement.clientWidth);
-            return (
-                rect.top >= 0 && rect.top <= windowHeight && rect.height > 0 &&
-                rect.left >= 0 && rect.left <= windowWidth && rect.width > 0
-            );
+
+            const hasSize = rect.width > 0 && rect.height > 0;
+
+            const startsWithinVerticalBounds = rect.top >= 0 && rect.top <= windowHeight;
+            const endsWithinVerticalBounds = rect.bottom >= 0 && rect.bottom <= windowHeight;
+            const overlapsVerticalBounds = rect.top <= 0 && rect.bottom >= windowHeight;
+
+            const startsWithinHorizontalBounds = rect.left >= 0 && rect.left <= windowWidth;
+            const endsWithinHorizontalBounds = rect.right >= 0 && rect.right <= windowWidth;
+            const overlapsHorizontalBounds = rect.left <= 0 && rect.right >= windowWidth;
+
+            const verticalOverlap = startsWithinVerticalBounds || endsWithinVerticalBounds || overlapsVerticalBounds;
+            const horizontalOverlap = startsWithinHorizontalBounds || endsWithinHorizontalBounds || overlapsHorizontalBounds;
+
+            const isInViewport = hasSize && verticalOverlap && horizontalOverlap;
+
+            // Get computed styles to check for visibility and opacity
+            const style = window.getComputedStyle(el);
+            const isVisible = style.opacity !== '0' && style.visibility !== 'hidden';
+
+            // The element is considered visible if it's within the viewport and not explicitly hidden or fully transparent
+            return isInViewport && isVisible;
         }
 
+        // Check all elements in the document
         const allElements = document.querySelectorAll('*');
         allElements.forEach(el => {
             if (isElementVisibleInViewport(el)) {
@@ -45,17 +65,22 @@ JS_FUNCTIONS = cleandoc(
         const previouslyMarkedElements = document.querySelectorAll('[' + scrollableAttribute + ']');
         previouslyMarkedElements.forEach(el => el.removeAttribute(scrollableAttribute));
 
+        function isWindowScrollable() {
+            return document.documentElement.scrollHeight > window.innerHeight;
+        }
+
         // Function to check if an element is scrollable
         function isElementScrollable(el) {
-            const hasScrollableContent = el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth;
-            const overflowStyle = window.getComputedStyle(el).overflow 
-                + window.getComputedStyle(el).overflowX 
-                + window.getComputedStyle(el).overflowY;
+            if (el === document.body) {
+                return isWindowScrollable();
+            }
+            const hasScrollableContent = el.scrollHeight > el.clientHeight;
+            const overflowStyle = window.getComputedStyle(el).overflow + window.getComputedStyle(el).overflowX;
             return hasScrollableContent && /(auto|scroll)/.test(overflowStyle);
         }
 
         // Mark all scrollable elements
-        const allElements = document.querySelectorAll('*');
+        const allElements = document.querySelectorAll('[data-playwright-visible]');
         allElements.forEach(el => {
             if (isElementScrollable(el)) {
                 el.setAttribute(scrollableAttribute, 'true');

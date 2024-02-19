@@ -169,7 +169,7 @@ class PlaywrightPlugin(Plugin):
     @tool
     def press_enter(self):
         """
-        Press the Enter key. This can be useful for submitting forms that 
+        Press the Enter key. This can be useful for submitting forms that
         don't have a submit button.
         """
         return self._run_async(self._press_enter())
@@ -249,15 +249,7 @@ class PlaywrightPlugin(Plugin):
         self._playwright = None
         self._browser = None
         self._page = None
-
-        for message in history:
-            if not "tool_calls" in message:
-                continue
-            for tool_call in message["tool_calls"]:
-                self.call_tool(
-                    tool_call["function"]["name"],
-                    **json.loads(tool_call["function"]["arguments"]),
-                )
+        super().reset_history(history)
 
     async def _get_page_content(self):
         page = await self._ensure_page()
