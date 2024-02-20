@@ -12,7 +12,6 @@ from ai_powered_qa.custom_plugins.playwright_plugin.only_visible import (
     PlaywrightPluginOnlyVisible,
 )
 
-DEFAULT_PLAYWRIGHT_PLUGIN = "PlaywrightPluginOnlyVisible"
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
 HISTORY_NAME_KEY = "history_name"
@@ -45,16 +44,12 @@ st.write(
 sidebar = st.sidebar
 
 
-def load_agent():
+def load_agent(playwright_plugin: str):
     _agent_name = st.session_state[AGENT_NAME_KEY]
     _agent = agent_store.load_agent(
         _agent_name,
         default_kwargs={
-            "plugins": {
-                DEFAULT_PLAYWRIGHT_PLUGIN: NAME_TO_PLUGIN_CLASS[
-                    DEFAULT_PLAYWRIGHT_PLUGIN
-                ]()
-            }
+            "plugins": {playwright_plugin: NAME_TO_PLUGIN_CLASS[playwright_plugin]()}
         },
     )
     st.session_state["agent_instance"] = _agent
@@ -66,8 +61,13 @@ agent_name = sidebar.text_input(
     "Agent name", value="test_agent", key=AGENT_NAME_KEY, on_change=load_agent
 )
 
+playwright_plugin_choice = sidebar.selectbox(
+    "Default playwright plugin", ["OnlyVisible", "HtmlPaging"]
+)
+default_playwright_plugin = f"PlaywrightPlugin{playwright_plugin_choice}"
+
 if not "agent_instance" in st.session_state:
-    load_agent()
+    load_agent(default_playwright_plugin)
 
 agent = st.session_state["agent_instance"]
 
@@ -191,7 +191,10 @@ context_message = (
 with st.chat_message("user"):
     st.write("**Cotext message**")
     st.write(context_message["content"])
-    st.image(agent.plugins[DEFAULT_PLAYWRIGHT_PLUGIN].buffer)
+    for plugin_name in agent.plugins:
+        if "PlaywrightPlugin" in plugin_name:
+            st.image(agent.plugins[plugin_name].buffer)
+            break
 
 agent_store.save_interaction(agent, interaction)
 
