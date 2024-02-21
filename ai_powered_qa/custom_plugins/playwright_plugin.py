@@ -2,6 +2,10 @@ import asyncio
 import json
 import re
 
+from typing import Any
+from openai import OpenAI
+from pydantic import Field
+
 import playwright.async_api
 import playwright.sync_api
 from bs4 import BeautifulSoup
@@ -9,8 +13,87 @@ from bs4 import BeautifulSoup
 from ai_powered_qa.components.plugin import Plugin, tool
 
 
+js_function = """
+function updateElementVisibility() {
+    const visibilityAttribute = 'data-playwright-visible';
+
+    const previouslyMarkedElements = document.querySelectorAll('[' + visibilityAttribute + ']');
+    previouslyMarkedElements.forEach(el => el.removeAttribute(visibilityAttribute));
+
+    function isElementVisibleInViewport(el) {
+        const rect = el.getBoundingClientRect();
+        const windowHeight = (window.innerHeight || document.documentElement.clientHeight);
+        const windowWidth = (window.innerWidth || document.documentElement.clientWidth);
+        return (
+            rect.top >= 0 && rect.top <= windowHeight && rect.height > 0 &&
+            rect.left >= 0 && rect.left <= windowWidth && rect.width > 0
+        );
+    }
+
+    const allElements = document.querySelectorAll('*');
+    allElements.forEach(el => {
+        if (isElementVisibleInViewport(el)) {
+            el.setAttribute(visibilityAttribute, 'true');
+        }
+    });
+}
+window.updateElementVisibility = updateElementVisibility;
+
+function updateElementScrollability() {
+    const scrollableAttribute = 'data-playwright-scrollable';
+
+    // First, clear the attribute from all elements
+    const previouslyMarkedElements = document.querySelectorAll('[' + scrollableAttribute + ']');
+    previouslyMarkedElements.forEach(el => el.removeAttribute(scrollableAttribute));
+
+    // Function to check if an element is scrollable
+    function isElementScrollable(el) {
+        const hasScrollableContent = el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth;
+        const overflowStyle = window.getComputedStyle(el).overflow + window.getComputedStyle(el).overflowX + window.getComputedStyle(el).overflowY;
+        return hasScrollableContent && /(auto|scroll)/.test(overflowStyle);
+    }
+
+    // Mark all scrollable elements
+    const allElements = document.querySelectorAll('*');
+    allElements.forEach(el => {
+        if (isElementScrollable(el)) {
+            el.setAttribute(scrollableAttribute, 'true');
+        }
+    });
+}
+window.updateElementScrollability = updateElementScrollability;
+
+function setValueAsDataAttribute() {
+  const inputs = document.querySelectorAll('input, textarea, select');
+
+  inputs.forEach(input => {
+    const value = input.value;
+    input.setAttribute('data-playwright-value', value);
+  });
+}
+window.setValueAsDataAttribute = setValueAsDataAttribute;
+"""
+
+describe_html_system_message = """You are an HTML interpreter assisting in web automation. Given HTML code of a page, you should return a natural language description of how the page probably looks.
+Be specific and exhaustive. 
+Mention all elements that can be interactive.
+Describe the state of all form elements, the value of each input is provided as the `data-playwright-value` attribute.
+"""
+
+context_template = """Here is the HTML of the current page:
+```html
+{html}
+```
+And here is a description of the page:
+{description}
+
+"""
+
+
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
+
+    client: Any = Field(default_factory=OpenAI, exclude=True)
 
     _playwright: playwright.async_api.Playwright
     _browser: playwright.async_api.Browser
@@ -45,10 +128,30 @@ class PlaywrightPlugin(Plugin):
     def context_message(self) -> str:
         html = self.run_async(self._get_page_content())
         self.screenshot()
-        return f"Current page content:\n\n ```\n{html}\n```"
+        if html.startswith("No page loaded yet."):
+            return context_template.format(
+                html=html,
+                description="The browser is empty",
+            )
+        completion = self.client.chat.completions.create(
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "system", "content": describe_html_system_message},
+                {"role": "assistant", "content": html},
+            ],
+        )
+        return context_template.format(
+            html=html,
+            description=completion.choices[0].message.content,
+        )
 
     async def _get_page_content(self):
         page = await self.ensure_page()
+        if page.url == "about:blank":
+            return "No page loaded yet."
+        await page.evaluate("window.updateElementVisibility()")
+        await page.evaluate("window.updateElementScrollability()")
+        await page.evaluate("window.setValueAsDataAttribute()")
         html_content = await page.content()
         stripped_html = clean_html(html_content)
         return stripped_html
@@ -72,39 +175,24 @@ class PlaywrightPlugin(Plugin):
         return f"Navigating to {url} returned status code {response.status if response else 'unknown'}"
 
     @tool
-    def click_element(self, selector: str, index: int = 0, timeout: int = 3_000) -> str:
+    def click_element(self, selector: str, timeout: int = 3_000) -> str:
         """
-        Click on an element with the given CSS selector
+        Click on an element with the given CSS selector.
 
-        :param str selector: CSS selector for the element to click
-        :param int index: Index of the element to click
+        :param str selector: CSS selector for the element to click. Be as specific as possible with the selector to ensure only one item is clicked.
         :param int timeout: Timeout for Playwright to wait for element to be ready.
         """
-        return self.run_async(self._click_element(selector, index, timeout))
+        return self.run_async(self._click_element(selector, timeout))
 
-    async def _click_element(
-        self, selector: str, index: int = 0, timeout: int = 3_000
-    ) -> str:
-        visible_only: bool = True
-
-        def _selector_effective(selector: str, index: int) -> str:
-            if not visible_only:
-                return selector
-            return f"{selector} >> visible=1 >> nth={index}"
-
-        playwright_strict: bool = False
+    async def _click_element(self, selector: str, timeout: int = 3_000) -> str:
         page = await self.ensure_page()
         try:
-            selector = _selector_effective(selector, index)
-            element_exists = await page.is_visible(selector)
-            if not element_exists:
-                return f"Unable to click on element '{selector}' as it does not exist"
             await page.click(
-                selector=_selector_effective(selector, index),
-                strict=playwright_strict,
+                selector=selector,
                 timeout=timeout,
             )
-        except TimeoutError:
+        except Exception as e:
+            print(e)
             return f"Unable to click on element '{selector}'"
 
         return f"Clicked element '{selector}'"
@@ -124,9 +212,10 @@ class PlaywrightPlugin(Plugin):
     async def _fill_element(self, selector: str, text: str, timeout: int = 3000):
         page = await self.ensure_page()
         try:
-            await page.locator(selector).fill(text, timeout=timeout)
-        except Exception:
-            return f"Unable to fill up text on element '{selector}'."
+            await page.locator(_selector_visible(selector)).fill(text, timeout=timeout)
+        except Exception as e:
+            print(e)
+            return f"Unable to fill element. {e}"
         return f"Text input on the element by text, {selector}, was successfully performed."
 
     @tool
@@ -185,12 +274,46 @@ class PlaywrightPlugin(Plugin):
     #         return "Not implemented action"
     #     return f"Action '{action}' was successfully performed: {result_message}"
 
+    @tool
+    def scroll(self, selector: str, direction: str):
+        """
+        Scroll up or down in a selected scroll container
+
+        :param str selector: CSS selector for the scroll container
+        :param str direction: Direction to scroll in. Either 'up' or 'down'
+        """
+        return self.run_async(self._scroll(selector, direction))
+
+    async def _scroll(self, selector: str, direction: str):
+        page = await self.ensure_page()
+        try:
+            window_height = await page.evaluate("window.innerHeight")
+            bounds = await page.locator(selector).bounding_box()
+            if not bounds:
+                return f"Unable to scroll in element '{selector}' as it does not exist"
+            x = bounds["x"] + bounds["width"] / 2
+            y = bounds["y"] + bounds["height"] / 2
+            delta = min(bounds["height"], window_height) * 0.8
+            await page.mouse.move(x=x, y=y)
+            if direction == "up":
+                await page.mouse.wheel(delta_y=-delta, delta_x=0)
+            elif direction == "down":
+                await page.mouse.wheel(delta_y=delta, delta_x=0)
+            else:
+                return f"Unable to scroll in element '{selector}' as direction '{direction}' is not supported"
+
+        except Exception as e:
+            print(e)
+            return f"Unable to scroll. {e}"
+        return f"Scrolling in {direction} direction was successfully performed."
 
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:
             self._playwright = await playwright.async_api.async_playwright().start()
             self._browser = await self._playwright.chromium.launch(headless=False)
-            self._page = await self._browser.new_page()
+            browser_context = await self._browser.new_context()
+            await browser_context.add_init_script(js_function)
+            self._page = await browser_context.new_page()
         return self._page
 
     def close(self):
@@ -234,41 +357,48 @@ def clean_html(html_content):
     - We replace <div> with <d> as they are very common.
     - The _clean_attributes function removes all `data-` attributes
     """
-    html_clean = _clean_attributes(html_content)
-    html_clean = re.sub(r"<div[\s]*>[\s]*</div>", "", html_clean)
-    html_clean = re.sub(r"<!--[\s\S]*?-->", "", html_clean)
-    html_clean = html_clean.replace("<div", "<d").replace("</div>", "</d>")
-    soup = BeautifulSoup(html_clean, "html.parser")
-    _unwrap_single_child(soup)
+    soup = BeautifulSoup(html_content, "html.parser")
+    _remove_not_visible(soup)
     _remove_useless_tags(soup)
-    return str(soup)
+    # _unwrap_single_child(soup)
+    _clean_attributes(soup)
+    html_clean = soup.prettify()
+    html_clean = re.sub(r"[\s]*<!--[\s\S]*?-->[\s]*?", "", html_clean)
+    return html_clean
 
 
-def _clean_attributes(html: str) -> str:
-    regexes = [
-        r'class="[^"]*"',
-        r'style="[^"]*"',
-        r'data-(?!test)[a-zA-Z\-]+="[^"]*"',
-        r'aria-[a-zA-Z\-]+="[^"]*"',
-        r'on[a-zA-Z\-]+="[^"]*"',
-        r'role="[^"]*"',
-        r'grow="[^"]*"',
-        r'transform="[^"]*"',
-        r'height="[^"]*"',
-        r'width="[^"]*"',
-        r'jsaction="[^"]*"',
-        r'jscontroller="[^"]*"',
-        r'jsrenderer="[^"]*"',
-        r'jsmodel="[^"]*"',
-        r'c-wiz="[^"]*"',
-        r'jsshadow="[^"]*"',
-        r'jsslot="[^"]*"',
-        r'dir"[^"]*"',
+def _remove_not_visible(soup: BeautifulSoup):
+    to_keep = set()
+    visible_elements = soup.find_all(attrs={"data-playwright-visible": True})
+    for element in visible_elements:
+        current = element
+        while current is not None:
+            if current in to_keep:
+                break
+            to_keep.add(current)
+            current = current.parent
+
+    for element in soup.find_all(True):
+        if element.name and element not in to_keep:
+            element.decompose()
+
+
+def _clean_attributes(soup: BeautifulSoup) -> str:
+    allowed_attrs = [
+        "class",
+        "id",
+        "name",
+        "value",
+        "placeholder",
+        "data-test-id",
+        "data-playwright-scrollable",
+        "data-playwright-value",
     ]
-    for regex in regexes:
-        html = re.sub(regex, "", html)
 
-    return html
+    for element in soup.find_all(True):
+        element.attrs = element.attrs = {
+            key: value for key, value in element.attrs.items() if key in allowed_attrs
+        }
 
 
 def _unwrap_single_child(soup: BeautifulSoup):
@@ -277,11 +407,15 @@ def _unwrap_single_child(soup: BeautifulSoup):
     save some tokens.
     """
     for tag in soup.find_all(True):
-        if len(tag.contents) == 1 and not isinstance(tag.contents[0], str):
+        if (
+            len(tag.contents) == 1
+            and not isinstance(tag.contents[0], str)
+            and not tag.name in ["button", "input", "a", "select", "textarea"]
+        ):
             tag.unwrap()
 
 
-def _remove_useless_tags(soup):
+def _remove_useless_tags(soup: BeautifulSoup):
     tags_to_remove = [
         "path",
         "meta",
@@ -292,3 +426,9 @@ def _remove_useless_tags(soup):
     ]
     for t in soup.find_all(tags_to_remove):
         t.decompose()
+
+
+def _selector_visible(selector: str) -> str:
+    if ":visible" not in selector:
+        return f"{selector}:visible"
+    return selector
