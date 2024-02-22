@@ -4,19 +4,15 @@
     "type": "split",
     "children": [
       {
-        "id": "5d89e37d63df8bbe",
+        "id": "035c4556c4c750f7",
         "type": "tabs",
         "children": [
           {
-            "id": "6765fd5074dfbc5d",
+            "id": "78649fde77cea418",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "projects/Series A Funding Pitch.md",
-                "mode": "source",
-                "source": false
-              }
+              "type": "empty",
+              "state": {}
             }
           }
         ]
@@ -85,7 +81,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "projects/Series A Funding Pitch.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -102,7 +97,6 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "projects/Series A Funding Pitch.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               }
@@ -124,9 +118,7 @@
             "type": "leaf",
             "state": {
               "type": "outline",
-              "state": {
-                "file": "projects/Series A Funding Pitch.md"
-              }
+              "state": {}
             }
           }
         ]
@@ -146,13 +138,13 @@
       "command-palette:Open command palette": false
     }
   },
-  "active": "6765fd5074dfbc5d",
+  "active": "78649fde77cea418",
   "lastOpenFiles": [
-    "resources/2024-02-05 2PM - investor meeting.md",
-    "projects/Series A Funding Pitch.md",
-    "resources/Tech Innovators Daily - Revolutionizing Customer Service with AI.md",
     "daily/2024-02-05.md",
     "resources/Releasing our image generator v3.md",
+    "projects/Series A Funding Pitch.md",
+    "resources/2024-02-05 2PM - investor meeting.md",
+    "resources/Tech Innovators Daily - Revolutionizing Customer Service with AI.md",
     "resources/Innovative Image Generation.md",
     "daily/2024-02-04.md",
     "projects/Image Generator v3.md",

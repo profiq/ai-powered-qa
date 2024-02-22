@@ -419,6 +419,7 @@ def _clean_attributes(soup: BeautifulSoup) -> str:
         "data-test-id",
         "data-playwright-scrollable",
         "data-playwright-value",
+        "href",
     ]
 
     for element in soup.find_all(True):
