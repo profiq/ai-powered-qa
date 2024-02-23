@@ -104,7 +104,14 @@ class Plugin(BaseModel, ABC):
         return required_params
 
     def reset_history(self, history):
-        pass
+        for message in history:
+            if not "tool_calls" in message:
+                continue
+            for tool_call in message["tool_calls"]:
+                self.call_tool(
+                    tool_call["function"]["name"],
+                    **json.loads(tool_call["function"]["arguments"]),
+                )
 
 
 class RandomNumberPlugin(Plugin):
