@@ -48,10 +48,10 @@ class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
     client: Any = Field(default_factory=OpenAI, exclude=True)
 
-    _playwright: playwright.async_api.Playwright | None
-    _browser: playwright.async_api.Browser | None
-    _page: playwright.async_api.Page | None
-    _buffer: bytes | None
+    _playwright: playwright.async_api.Playwright | None = None
+    _browser: playwright.async_api.Browser | None = None
+    _page: playwright.async_api.Page | None = None
+    _buffer: bytes | None = None
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -183,7 +183,7 @@ class PlaywrightPlugin(Plugin):
             return f"Unable to press Enter. {e}"
         return "Enter key was successfully pressed."
 
-    @tool
+    # @tool
     def assert_that(self, selector: str, action: str, value: str | None = None):
         """
         {
