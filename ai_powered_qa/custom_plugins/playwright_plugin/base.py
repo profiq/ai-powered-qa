@@ -188,7 +188,7 @@ class PlaywrightPlugin(Plugin):
     async def _press_enter(self):
         page = await self._ensure_page()
         try:
-            await page.keyboard.press("Enter")
+            await page.locator('*:focus').press("Enter")
         except Exception as e:
             print(e)
             return f"Unable to press Enter. {e}"

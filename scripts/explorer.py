@@ -2,11 +2,12 @@ from dataclasses import dataclass, field
 from inspect import cleandoc
 import json
 import logging
+import random
+import time
 
 import numpy as np
 from openai import OpenAI
 
-import random
 from ai_powered_qa.custom_plugins.playwright_plugin.html_paging import (
     PlaywrightPluginHtmlPaging,
 )
@@ -41,7 +42,9 @@ def find_similar(websites: list[Website], current: Website) -> Website | None:
 
 
 def description_to_string(description: dict) -> str:
-    elements = "\n".join(description["interactive_elements"])
+    elements = "\n".join(
+        f"{e['type']}: {e['description']}" for e in description["interactive_elements"]
+    )
     return f"""
         Basic purpose: {description['basic_purpose']}
 
@@ -52,16 +55,18 @@ def description_to_string(description: dict) -> str:
 
 def main():
     websites_visited: list[Website] = []
-    domain = "https://news.ycombinator.com"
+    domain = "bazos.cz"
+    start_url = f"https://{domain}"
 
     client = OpenAI()
     plugin = PlaywrightPluginHtmlPaging(name="playwright", client=client)
-    plugin.navigate_to_url(domain)
+    plugin.navigate_to_url(start_url)
 
-    for _ in range(15):
+    for _ in range(10):
+        time.sleep(3)
         html = plugin.html
-        url = plugin._page.url if plugin._page else None
         title = plugin.title
+        url = plugin._page.url if plugin._page else None
 
         prompt_description = cleandoc(
             f"""
@@ -95,7 +100,17 @@ def main():
                         "interactive_elements": {
                             "type": "array",
                             "items": {
-                                "type": "string",
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "description": "Type of the interactive element. E.g. 'link', 'button'",
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "description": "Description of the interactive element. E.g. 'A link to the homepage'",
+                                    },
+                                },
                             },
                             "description": "List of interactive elements on the page. E.g. 'A link to the homepage'",
                         },
@@ -137,6 +152,11 @@ def main():
         else:
             websites_visited.append(website_current)
 
+        if url and domain not in url:
+            logging.info(f"Left the domain of {domain}. Navigating back to the start")
+            plugin.navigate_to_url(start_url)
+            continue
+
         prompt_recommend = cleandoc(
             f"""
             You are a web crawler. Your goal is to analyze the textual 
@@ -148,8 +168,6 @@ def main():
             - Click on a link or button
             - Press Enter
             - Go back to the previous page
-
-            You are forbidden to leave the domain of the current website.
 
             Here is the textual description of the current page:
 
@@ -203,10 +221,9 @@ def main():
 
         recommendations = json.loads(tool_calls[0].function.arguments)
 
-        if 'actions' not in recommendations or len(recommendations["actions"]) == 0:
+        if "actions" not in recommendations or len(recommendations["actions"]) == 0:
             logging.info("No recommendations generated. Navigating back to the start")
-            plugin.navigate_to_url(domain)
-
+            plugin.navigate_to_url(start_url)
 
         recommendation = random.choice(recommendations["actions"])
         logging.info(f"Recommended action: {recommendation}")
@@ -219,9 +236,6 @@ def main():
             If a tool requires a selector, the selector has to be
             compatible with Playwright and the element should be present
             in HTML.
-
-            If you discover that you left the targe domain of {domain}
-            then go back.
 
             Here is the current URL: {url}
 
