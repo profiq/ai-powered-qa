@@ -105,17 +105,6 @@ JS_FUNCTIONS = cleandoc(
 class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
     name: str = "PlaywrightPluginOnlyVisible"
 
-    @property
-    def html(self) -> str:
-        return self._run_async(self._get_page_content())
-
-    @property
-    def title(self) -> str:
-        if self._page:
-            return self._run_async(self._page.title())
-        else:
-            return ""
-
     async def _get_page_content(self):
         page = await self._ensure_page()
         if page.url == "about:blank":

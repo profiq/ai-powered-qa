@@ -7,7 +7,7 @@ from . import base
 
 class PlaywrightPluginHtmlPaging(base.PlaywrightPlugin):
     name: str = "PlaywrightPluginHtmlPaging"
-    html_part_length: int = 15000
+    html_part_length: int = 12000
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -48,6 +48,12 @@ class PlaywrightPluginHtmlPaging(base.PlaywrightPlugin):
             HTML part {self._part} of {max_parts}
             """
         )
+
+    @property
+    def html(self):
+        html = self._run_async(self._get_page_content())
+        html, _ = self._get_html_part(html)
+        return html
 
     @tool
     def move_to_html_part(self, part: int):

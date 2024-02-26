@@ -6,8 +6,9 @@ import logging
 import numpy as np
 from openai import OpenAI
 
-from ai_powered_qa.custom_plugins.playwright_plugin.only_visible import (
-    PlaywrightPluginOnlyVisible,
+import random
+from ai_powered_qa.custom_plugins.playwright_plugin.html_paging import (
+    PlaywrightPluginHtmlPaging,
 )
 
 
@@ -29,21 +30,35 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 def find_similar(websites: list[Website], current: Website) -> Website | None:
     similarities = [cosine_similarity(w.embedding, current.embedding) for w in websites]
+    logging.info(current.urls[0])
+    for i, sim in enumerate(similarities):
+        logging.info(f"Similarity with {websites[i].urls[0]}: {sim}")
     max_similarity_idx = np.argmax(similarities)
     max_similarity = similarities[max_similarity_idx]
-    if max_similarity > 0.91:
+    if max_similarity > 0.92:
         return websites[max_similarity_idx]
     return None
 
 
+def description_to_string(description: dict) -> str:
+    elements = "\n".join(description["interactive_elements"])
+    return f"""
+        Basic purpose: {description['basic_purpose']}
+
+        Interactive elements: 
+        {elements}
+        """
+
+
 def main():
     websites_visited: list[Website] = []
+    domain = "https://news.ycombinator.com"
 
     client = OpenAI()
-    plugin = PlaywrightPluginOnlyVisible(name="playwright", client=client)
-    plugin.navigate_to_url("https://bazos.cz/")
+    plugin = PlaywrightPluginHtmlPaging(name="playwright", client=client)
+    plugin.navigate_to_url(domain)
 
-    for _ in range(7):
+    for _ in range(15):
         html = plugin.html
         url = plugin._page.url if plugin._page else None
         title = plugin.title
@@ -65,24 +80,48 @@ def main():
             """
         )
 
+        describe_function = {
+            "type": "function",
+            "function": {
+                "name": "describe_html",
+                "description": "Describe the subpage from its HTML",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "basic_purpose": {
+                            "type": "string",
+                            "description": "Top level description of the subpage's purpose. E.g. 'This is a form for adding a new user'",
+                        },
+                        "interactive_elements": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                            },
+                            "description": "List of interactive elements on the page. E.g. 'A link to the homepage'",
+                        },
+                    },
+                },
+            },
+        }
+
         completion = client.chat.completions.create(
             model="gpt-3.5-turbo-0125",
             messages=[{"role": "user", "content": prompt_description}],
+            tools=[describe_function],
+            tool_choice={"type": "function", "function": {"name": "describe_html"}},
             temperature=0.1,
         )
 
-        description = completion.choices[0].message.content
-
-        if not description:
-            logging.error(f"No description generated for {url}")
+        tool_calls = completion.choices[0].message.tool_calls
+        if not tool_calls or len(tool_calls) == 0:
+            logging.error("No description tool called.")
             break
 
+        description = json.loads(tool_calls[0].function.arguments)
+        description = description_to_string(description)
         logging.info(f"Description generated:\n {description}")
 
-        response = client.embeddings.create(
-            model="text-embedding-3-small", input=description
-        )
-
+        response = client.embeddings.create(model="text-embedding-3-small", input=html)
         embedding = np.array(response.data[0].embedding)
         website_current = Website([url] if url else [], title, description, embedding)
 
@@ -107,8 +146,8 @@ def main():
 
             You can perform one of the following actions:
             - Click on a link or button
-            - Navigate to a URL - for example the previous one
             - Press Enter
+            - Go back to the previous page
 
             You are forbidden to leave the domain of the current website.
 
@@ -129,25 +168,62 @@ def main():
             """
         )
 
+        recommend_actions_tool = {
+            "type": "function",
+            "function": {
+                "name": "recommend_actions",
+                "description": "Recommend actions to perform next",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "actions": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "description": "Recommended action to perform next",
+                            },
+                        }
+                    },
+                },
+            },
+        }
+
         completion = client.chat.completions.create(
             model="gpt-3.5-turbo-0125",
             messages=[{"role": "user", "content": prompt_recommend}],
+            tools=[recommend_actions_tool],
+            temperature=0.1,
+            tool_choice={"type": "function", "function": {"name": "recommend_actions"}},
         )
 
-        recommendation = completion.choices[0].message.content
-        logging.info(f"Recommended actions: {recommendation}")
+        tool_calls = completion.choices[0].message.tool_calls
+        if not tool_calls or len(tool_calls) == 0:
+            logging.error("No recommendation tool called.")
+            break
+
+        recommendations = json.loads(tool_calls[0].function.arguments)
+
+        if 'actions' not in recommendations or len(recommendations["actions"]) == 0:
+            logging.info("No recommendations generated. Navigating back to the start")
+            plugin.navigate_to_url(domain)
+
+
+        recommendation = random.choice(recommendations["actions"])
+        logging.info(f"Recommended action: {recommendation}")
 
         prompt_execute = cleandoc(
             f"""
             You are an expert on executing action on the web. You are given
-            a website HTML, it's short text description and a set of recommended
-            actions to perform. Select one action randomly and perform it
-            using available tools.
+            a website HTML, it's short text description and an action to perform
 
-            Here is the list of actions you have alread performed on
-            this subpage, avoid repeating them:
+            If a tool requires a selector, the selector has to be
+            compatible with Playwright and the element should be present
+            in HTML.
 
-            {str(website_current.actions)}
+            If you discover that you left the targe domain of {domain}
+            then go back.
+
+            Here is the current URL: {url}
 
             Here is the current context:
 
@@ -176,7 +252,7 @@ def main():
             tool_args = json.loads(tool_to_call.arguments)
             logging.info(f"Executing tool: {tool_name} with arguments: {tool_args}")
             plugin.call_tool(tool_name, **tool_args)
-            website_current.actions.append(f"{tool_name} {tool_to_call.arguments}")
+            website_current.actions.append(recommendation)
 
     plugin.close()
     print("Exploration finished.")
