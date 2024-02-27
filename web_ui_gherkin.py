@@ -1,11 +1,14 @@
 import json
+import os
 import re
 
 import streamlit as st
 
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
+from ai_powered_qa.components.agent import Agent
 from ai_powered_qa.components.agent_store import AgentStore
-from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
+from ai_powered_qa.components.interaction import Interaction
+from ai_powered_qa.custom_plugins.playwright_plugin.base import PlaywrightPlugin
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
 HISTORY_NAME_KEY = "history_name"
@@ -22,6 +25,69 @@ agent_store = AgentStore(
 
 
 sidebar = st.sidebar
+
+
+def generate_whisperer_interaction(
+    agent: Agent, html_context: str = None, model=None
+) -> Interaction:
+    model = "gpt-3.5-turbo-1106"
+    gherkin_system_message = (
+        "You are test user. Based on provided HTML state and "
+        "previous generated steps (gherkin_step_history), "
+        "generate one test step (subtask), to try finish (main_task)."
+        "You can navigate over the buttons which are visible in HTML. "
+        "Do NOT repeat SAME steps."
+        "Answer provide in language Gherkin."
+    )
+    _messages = [{"role": "system", "content": gherkin_system_message}]
+    if html_context:
+        _messages.append({"role": "user", "content": html_context})
+
+    request_params = {
+        "model": model,
+        "messages": _messages,
+    }
+    completion = agent.client.chat.completions.create(**request_params)
+
+    return Interaction(
+        request_params=request_params,
+        user_prompt=html_context,
+        agent_response=completion.choices[0].message,
+    )
+
+
+def load_gherkin_memory(agent: Agent):
+    directory = "agents"
+    file_name = "gherkin_memory.json"
+    history_directory = os.path.join(directory, agent.agent_name, agent.history_name)
+    file_path = os.path.join(history_directory, file_name)
+    if not os.path.exists(file_path):
+        return "No data"
+
+    with open(file_path, "r") as file:
+        return json.load(file)
+
+
+def update_gherkin_memory(agent: Agent, property_name, new_value=""):
+    directory = "agents"
+    file_name = "gherkin_memory.json"
+    print(agent)
+    history_directory = os.path.join(directory, agent.agent_name, agent.history_name)
+    file_path = os.path.join(history_directory, file_name)
+
+    try:
+        with open(file_path, "r") as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        data = {"gherkin_steps_history": [], "html_content": "`", "main_task": ""}
+        os.makedirs(history_directory, exist_ok=True)
+
+    if property_name in data and isinstance(data[property_name], list):
+        data[property_name].extend(new_value)
+    else:
+        data[property_name] = new_value
+    with open(file_path, "w") as file:
+        json.dump(data, file, indent=2)
 
 
 def load_agent():
@@ -137,18 +203,19 @@ tool_call = st.selectbox(
 if generate_gherkin and history_name is not None:
     main_task = sidebar.text_area("Main task", value="")
 if generate_gherkin:
-    agent_store.update_gherkin_memory(agent, "main_task", main_task)
+    update_gherkin_memory(agent, "main_task", main_task)
 
 # User message
 if last_message is None or last_message["role"] == "assistant":
     if not user_message_content and generate_gherkin:
-        gherkin_data = agent_store.load_gherkin_memory(agent)
-        print(gherkin_data["html_content"])
+        gherkin_data = load_gherkin_memory(agent)
         if gherkin_data != "No data":
             if gherkin_data["html_content"] != "`":
-                result = agent.generate_whisperer_interaction(json.dumps(gherkin_data))
+                result = generate_whisperer_interaction(
+                    Agent(agent_name=agent.agent_name), json.dumps(gherkin_data)
+                )
                 st.session_state["user_message_content"] = result.agent_response.content
-                agent_store.update_gherkin_memory(
+                update_gherkin_memory(
                     agent,
                     "gherkin_steps_history",
                     [re.sub(r"^```gherkin", "", result.agent_response.content)],
@@ -156,13 +223,11 @@ if last_message is None or last_message["role"] == "assistant":
     with st.chat_message("user"):
         if generate_gherkin:
             user_message_content = st.text_area(
-                "Gherkin content",
-                key="user_message_content"
+                "Gherkin content", key="user_message_content"
             )
         else:
             user_message_content = st.text_area(
-                "User context content",
-                key="user_message_content"
+                "User context content", key="user_message_content"
             )
         if not user_message_content and not generate_empty:
             st.stop()
@@ -195,7 +260,7 @@ html_content = (
     context_message["content"][context_message["content"].find("<!DOCTYPE html>") :]
     or ""
 )
-agent_store.update_gherkin_memory(agent, "html_content", html_content)
+update_gherkin_memory(agent, "html_content", html_content)
 
 st.session_state["agent_message_content"] = agent_response["content"]
 tool_calls = (

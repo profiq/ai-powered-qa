@@ -186,31 +186,3 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
         return "=== CONTEXT MESSAGE ===\n\n".join(contexts)
-
-    def generate_whisperer_interaction(
-        self, html_context: str = None, model=None
-    ) -> Interaction:
-        model = model or self.model
-        gherkin_system_message = (
-            "You are test user. Based on provided HTML state and "
-            "previous generated steps (gherkin_step_history), "
-            "generate one test step (subtask), to try finish (main_task)."
-            "You can navigate over the buttons which are visible in HTML. "
-            "Do NOT repeat SAME steps."
-            "Answer provide in language Gherkin."
-        )
-        _messages = [{"role": "system", "content": gherkin_system_message}]
-        if html_context:
-            _messages.append({"role": "user", "content": html_context})
-
-        request_params = {
-            "model": model,
-            "messages": _messages,
-        }
-        completion = self.client.chat.completions.create(**request_params)
-
-        return Interaction(
-            request_params=request_params,
-            user_prompt=html_context,
-            agent_response=completion.choices[0].message,
-        )
