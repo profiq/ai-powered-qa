@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 from openai import OpenAI
+from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
 
 from ai_powered_qa.custom_plugins.playwright_plugin.html_paging import (
     PlaywrightPluginHtmlPaging,
@@ -23,6 +24,47 @@ class Website:
 
 
 logging.basicConfig(level=logging.INFO)
+
+
+def accept_cookies_if_present(client: OpenAI, plugin: PlaywrightPluginHtmlPaging):
+    html = plugin._run_async(plugin._get_page_content())
+    has_cookies = False
+    _, no_parts = plugin._get_html_part(html)
+
+    prompt_has_cookies = """
+        You are an expert on HTML. You are given a website HTML and you are
+        asked to check if the website shows a cookie consent banner.
+
+        Here is the current HTML:
+
+        ----- HTML START -----
+        {html_part}
+        ----- HTML END -----
+
+        Does the website show a cookie consent banner? Answer with 'yes' or 'no'.
+    """
+
+    for i in range(1, no_parts + 1):
+        plugin._part = i
+        html_part, _ = plugin._get_html_part(html)
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo-0125",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt_has_cookies.format(html_part=html_part),
+                }
+            ],
+            temperature=0.1,
+        )
+        response = completion.choices[0].message.content
+        if response and "yes" in response.lower():
+            has_cookies = True
+            break
+
+    if has_cookies:
+        logging.info("Website has cookies.")
+        execute_action(client, plugin, "Click on the buttom for accepting cookies")
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -53,20 +95,72 @@ def description_to_string(description: dict) -> str:
         """
 
 
+def execute_action(
+    client: OpenAI, plugin: PlaywrightPluginHtmlPaging, action: str
+) -> bool:
+    prompt_execute = cleandoc(
+        f"""
+        You are an expert on executing action on the web. You are given
+        a website HTML, it's short text description and an action to perform
+
+        If a tool requires a selector, the selector has to be
+        compatible with Playwright and the element should be present
+        in HTML.
+
+        Here is the current context:
+
+        {plugin.context_message}
+
+        The recommended action is:
+
+        {action}
+        """
+    )
+
+    completion = client.chat.completions.create(
+        model="gpt-3.5-turbo-0125",
+        messages=[
+            {"role": "system", "content": plugin.system_message},
+            {"role": "user", "content": prompt_execute},
+        ],
+        tools=plugin.tools,
+        temperature=0.2,
+    )
+
+    tool_calls = completion.choices[0].message.tool_calls
+    if tool_calls and len(tool_calls) > 0:
+        tool_to_call = tool_calls[0].function
+        tool_name = tool_to_call.name
+        tool_args = json.loads(tool_to_call.arguments)
+        logging.info(f"Executing tool: {tool_name} with arguments: {tool_args}")
+        plugin.call_tool(tool_name, **tool_args)
+        return True
+
+    return False
+
+
 def main():
     websites_visited: list[Website] = []
-    domain = "bazos.cz"
+    domain = "czc.cz"
     start_url = f"https://{domain}"
 
     client = OpenAI()
     plugin = PlaywrightPluginHtmlPaging(name="playwright", client=client)
     plugin.navigate_to_url(start_url)
+    time.sleep(5)
+    accept_cookies_if_present(client, plugin)
 
     for _ in range(10):
         time.sleep(3)
+        plugin._part = 1
         html = plugin.html
         title = plugin.title
         url = plugin._page.url if plugin._page else None
+
+        if url and domain not in url:
+            logging.info(f"Left the domain of {domain}. Navigating back to the start")
+            plugin.navigate_to_url(start_url)
+            continue
 
         prompt_description = cleandoc(
             f"""
@@ -79,13 +173,23 @@ def main():
             the page and its content. When describing the content, think about
             the specific subpage you are visiting instead the whole web portal.
             
+            Each element should be represented by a separate record:
+
+            INCORRECT EXAMPLE:
+            Links to specific categories like 'Oblíbené inzeráty', 'Moje inzeráty', and 'Přidat inzerát'
+
+            CORRECT EXAMPLE:
+            Link to the category 'Oblíbené inzeráty' - A link to the user's favorite ads
+            Link to the category 'Moje inzeráty' - A link to the user's ads
+            Link to the category 'Přidat inzerát' - A link to the form for adding a new ad
+
             Title: {title}
 
             {html}
             """
         )
 
-        describe_function = {
+        describe_function: ChatCompletionToolParam = {
             "type": "function",
             "function": {
                 "name": "describe_html",
@@ -152,11 +256,6 @@ def main():
         else:
             websites_visited.append(website_current)
 
-        if url and domain not in url:
-            logging.info(f"Left the domain of {domain}. Navigating back to the start")
-            plugin.navigate_to_url(start_url)
-            continue
-
         prompt_recommend = cleandoc(
             f"""
             You are a web crawler. Your goal is to analyze the textual 
@@ -166,8 +265,6 @@ def main():
 
             You can perform one of the following actions:
             - Click on a link or button
-            - Press Enter
-            - Go back to the previous page
 
             Here is the textual description of the current page:
 
@@ -186,7 +283,7 @@ def main():
             """
         )
 
-        recommend_actions_tool = {
+        recommend_actions_tool: ChatCompletionToolParam = {
             "type": "function",
             "function": {
                 "name": "recommend_actions",
@@ -227,45 +324,8 @@ def main():
 
         recommendation = random.choice(recommendations["actions"])
         logging.info(f"Recommended action: {recommendation}")
-
-        prompt_execute = cleandoc(
-            f"""
-            You are an expert on executing action on the web. You are given
-            a website HTML, it's short text description and an action to perform
-
-            If a tool requires a selector, the selector has to be
-            compatible with Playwright and the element should be present
-            in HTML.
-
-            Here is the current URL: {url}
-
-            Here is the current context:
-
-            {plugin.context_message}
-
-            The recommended action is:
-
-            {recommendation}
-            """
-        )
-
-        completion = client.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
-            messages=[
-                {"role": "system", "content": plugin.system_message},
-                {"role": "user", "content": prompt_execute},
-            ],
-            tools=plugin.tools,
-            temperature=0.2,
-        )
-
-        tool_calls = completion.choices[0].message.tool_calls
-        if tool_calls and len(tool_calls) > 0:
-            tool_to_call = tool_calls[0].function
-            tool_name = tool_to_call.name
-            tool_args = json.loads(tool_to_call.arguments)
-            logging.info(f"Executing tool: {tool_name} with arguments: {tool_args}")
-            plugin.call_tool(tool_name, **tool_args)
+        executed = execute_action(client, plugin, recommendation)
+        if executed:
             website_current.actions.append(recommendation)
 
     plugin.close()

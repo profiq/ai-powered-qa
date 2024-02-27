@@ -66,7 +66,7 @@ class PlaywrightPluginHtmlPaging(base.PlaywrightPlugin):
         self._part = part
         return f"Moved to HTML part {self._part}"
 
-    def _get_html_part(self, html: str) -> str:
+    def _get_html_part(self, html: str) -> tuple[str, int]:
         """
         Splits the HTML content into parts of about self.part_length characters.
         Always performs a split at a tag start character.
