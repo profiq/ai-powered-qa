@@ -4,12 +4,15 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel, Field
+import yaml
 
+from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
 from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
-from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
-from .utils import generate_short_id, md5, count_tokens
-import yaml
+from ai_powered_qa.config import TEMPERATURE_DEFAULT
+import logging
+
+from .utils import count_tokens, generate_short_id, md5
 
 load_dotenv()
 
@@ -79,6 +82,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         request_params = {
             "model": model,
             "messages": messages,
+            "temperature": TEMPERATURE_DEFAULT,
             "tool_choice": (
                 tool_choice
                 if tool_choice in ["auto", "none"]
@@ -181,7 +185,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
-        return "\n\n".join(contexts)
+        return "=== CONTEXT MESSAGE ===\n\n".join(contexts)
 
     def generate_whisperer_interaction(
         self, html_context: str = None, model=None
