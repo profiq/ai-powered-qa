@@ -102,6 +102,61 @@ function setValueAsDataAttribute() {
 window.setValueAsDataAttribute = setValueAsDataAttribute;
 """
 
+generate_selector_script = """([x, y]) => {
+    const element = document.elementFromPoint(x, y);
+    if (!element) return '';
+    let path = '';
+    for (let current = element; current; current = current.parentElement) {
+        const name = current.localName;
+        if (!name) break;
+        let selector = name;
+        // Check for a test ID
+        const testId = current.getAttribute('data-test-id');
+        if (testId) {
+            // Check if test ID is unique
+            const elements = document.querySelectorAll(`[data-test-id='${testId}']`);
+            if (elements.length === 1) {
+                selector += `[data-test-id='${testId}']`;
+                path = selector + (path ? ' > ' + path : '');
+                break;
+            }
+        }
+        // Check for an input name
+        const inputName = current.getAttribute('name');
+        if (inputName) {
+            // Check if input name is unique
+            const elements = document.querySelectorAll(`[name='${inputName}']`);
+            if (elements.length === 1) {
+                selector += `[name='${inputName}']`;
+                path = selector + (path ? ' > ' + path : '');
+                break;
+            }
+        }
+        if (current.id) {
+            selector += '#' + current.id;
+            path = selector + (path ? ' > ' + path : '');
+            break; // ID is unique, no need to go further
+        }
+        const className = current.className;
+        if (className && typeof className === 'string') {
+            selector += '.' + className.split(' ').join('.');
+        }
+        const siblings = current.parentElement ? Array.from(current.parentElement.children) : [];
+        if (siblings.length > 1) {
+            const index = siblings.indexOf(current) + 1;
+            selector += ':nth-child(' + index + ')';
+        }
+        path = selector + (path ? ' > ' + path : '');
+        // Check if the path is unique
+        const elements = document.querySelectorAll(path);
+        if (elements.length === 1) {
+            break;
+        }
+    }
+    return path;
+}
+"""
+
 describe_html_system_message = """You are an HTML interpreter assisting in web automation. Given HTML code of a page, you should return a natural language description of how the page probably looks.
 Be specific and exhaustive. 
 Mention all elements that can be interactive.
@@ -133,6 +188,15 @@ class PlaywrightPlugin(Plugin):
     @property
     def buffer(self) -> bytes:
         return bytes(self._buffer)
+
+    def get_selector_for_coordinates(self, x, y):
+        return self.run_async(self._get_selector_from_coordinates(x, y))
+
+    async def _get_selector_from_coordinates(self, x, y):
+        page = await self.ensure_page()
+        selector = await page.evaluate(generate_selector_script, [x, y])
+        print(selector)
+        return selector
 
     def __init__(self, **data):
         super().__init__(**data)

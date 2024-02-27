@@ -1,7 +1,13 @@
 import json
+from PIL import Image
+from io import BytesIO
 
-import streamlit as st
+
+import numpy as np
 from openai.types.chat.chat_completion_message import ChatCompletionMessageToolCall
+import streamlit as st
+from streamlit_image_coordinates import streamlit_image_coordinates
+
 
 from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
@@ -16,6 +22,21 @@ from ai_powered_qa.ui_common.constants import (
 )
 from ai_powered_qa.ui_common.load_agent import load_agent
 from ai_powered_qa.ui_common.load_history import load_history
+
+# HTML style tag with custom styles
+st.write(
+    """
+    <style>
+        iframe { 
+            width: 1024px; 
+            position: relative; 
+            left: 50%; 
+            transform: translateX(-50%); 
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 sidebar = st.sidebar
@@ -126,7 +147,21 @@ context_message = (
 with st.chat_message("user"):
     st.write("**Context message**")
     st.write(context_message["content"])
-    st.image(agent.plugins["PlaywrightPlugin"].buffer)
+
+playwright_plugin = agent.plugins["PlaywrightPlugin"]
+buffer = playwright_plugin.buffer
+image = Image.open(BytesIO(buffer))
+image_array = np.array(image)
+width = 1024
+coordinates = streamlit_image_coordinates(image_array, width=width)
+if coordinates:
+    # multiply the coordinates by the ratio of the actual width to the displayed width as integer
+    ratio = image.width / width
+    coordinates = {k: int(v * ratio) for k, v in coordinates.items()}
+    selector = playwright_plugin.get_selector_for_coordinates(**coordinates)
+    st.write(coordinates)
+    st.session_state["selector"] = selector
+    st.text_input("Selector", key="selector", disabled=True)
 
 # Request params UI (will regenerate the interaction)
 tool_call = st.selectbox(
@@ -152,7 +187,7 @@ st.button(
 
 agent_response = interaction.agent_response.model_dump()
 
-st.session_state["agent_message_content"] = agent_response["content"]
+# TODO: get rid of the model_dump and iterate the actual response when building the UI
 tool_calls = (
     {
         tool_call["id"]: tool_call["function"]
@@ -170,9 +205,15 @@ for tool_id, tool_info in tool_calls.items():
     st.session_state[f"{tool_id}_arguments"] = tool_info["arguments"]
 
 with st.chat_message("assistant"):
+
+    def update_agent_message_content():
+        interaction.agent_response.content = st.session_state["agent_message_content"]
+
+    st.session_state["agent_message_content"] = interaction.agent_response.content
     st.text_area(
         "Content",
         key="agent_message_content",
+        on_change=update_agent_message_content,
     )
 
     def update_tool_call(tool_id):
