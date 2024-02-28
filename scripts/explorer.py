@@ -28,7 +28,6 @@ logging.basicConfig(level=logging.INFO)
 
 def accept_cookies_if_present(client: OpenAI, plugin: PlaywrightPluginHtmlPaging):
     html = plugin._run_async(plugin._get_page_content())
-    has_cookies = False
     _, no_parts = plugin._get_html_part(html)
 
     prompt_has_cookies = """
@@ -59,12 +58,11 @@ def accept_cookies_if_present(client: OpenAI, plugin: PlaywrightPluginHtmlPaging
         )
         response = completion.choices[0].message.content
         if response and "yes" in response.lower():
-            has_cookies = True
+            logging.info("Website has cookies.")
+            execute_action(
+                client, plugin, "Click on the buttom for accepting cookies", i
+            )
             break
-
-    if has_cookies:
-        logging.info("Website has cookies.")
-        execute_action(client, plugin, "Click on the buttom for accepting cookies")
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -83,7 +81,109 @@ def find_similar(websites: list[Website], current: Website) -> Website | None:
     return None
 
 
+def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
+    html = plugin._run_async(plugin._get_page_content())
+    title = plugin.title
+    _, no_parts = plugin._get_html_part(html)
+    full_description = {}
+
+    prompt_description = cleandoc(
+        """
+        Analyze the following HTML and provide a specific and  extensive 
+        description of its contents. Imagine you are describing the page
+        to a person who cannot see it.
+
+        The description should list interactive elements, such as links, 
+        buttons or forms. It should also explain the specific purpose of
+        the page and its content. When describing the content, think about
+        the specific subpage you are visiting instead the whole web portal.
+        
+        Each element should be represented by a separate record:
+
+        INCORRECT EXAMPLE:
+        Links to specific categories like 'Oblíbené inzeráty', 'Moje inzeráty', and 'Přidat inzerát'
+
+        CORRECT EXAMPLE:
+        Link to the category 'Oblíbené inzeráty' - A link to the user's favorite ads
+        Link to the category 'Moje inzeráty' - A link to the user's ads
+        Link to the category 'Přidat inzerát' - A link to the form for adding a new ad
+
+        Title: {title}
+
+        {html}
+        """
+    )
+
+    describe_function: ChatCompletionToolParam = {
+        "type": "function",
+        "function": {
+            "name": "describe_html",
+            "description": "Describe the subpage from its HTML",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "basic_purpose": {
+                        "type": "string",
+                        "description": "Top level description of the subpage's purpose. E.g. 'This is a form for adding a new user'",
+                    },
+                    "interactive_elements": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "description": "Type of the interactive element. E.g. 'link', 'button'",
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "Description of the interactive element. E.g. 'A link to the homepage'",
+                                },
+                            },
+                        },
+                        "description": "List of interactive elements on the page. E.g. 'A link to the homepage'",
+                    },
+                },
+            },
+        },
+    }
+
+    for i in range(1, no_parts + 1):
+        plugin._part = i
+        html_part, _ = plugin._get_html_part(html)
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo-0125",
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt_description.format(title=title, html=html_part),
+                }
+            ],
+            tools=[describe_function],
+            temperature=0.1,
+            tool_choice={"type": "function", "function": {"name": "describe_html"}},
+        )
+
+        tool_calls = completion.choices[0].message.tool_calls
+        if tool_calls and len(tool_calls) > 0:
+            description = json.loads(tool_calls[0].function.arguments)
+            if description:
+                full_description[i] = description
+
+    return full_description
+
+
 def description_to_string(description: dict) -> str:
+    description_text = ""
+
+    for part, desc in description.items():
+        description_text += f"Part {part}:\n"
+        description_text += description_part_to_string(desc)
+
+    return description_text
+
+
+def description_part_to_string(description: dict) -> str:
     elements = "\n".join(
         f"{e['type']}: {e['description']}" for e in description["interactive_elements"]
     )
@@ -96,8 +196,9 @@ def description_to_string(description: dict) -> str:
 
 
 def execute_action(
-    client: OpenAI, plugin: PlaywrightPluginHtmlPaging, action: str
+    client: OpenAI, plugin: PlaywrightPluginHtmlPaging, action: str, part: int = 1
 ) -> bool:
+    plugin.move_to_html_part(part)
     prompt_execute = cleandoc(
         f"""
         You are an expert on executing action on the web. You are given
@@ -117,6 +218,8 @@ def execute_action(
         """
     )
 
+    plugin.move_to_html_part(1)
+
     completion = client.chat.completions.create(
         model="gpt-3.5-turbo-0125",
         messages=[
@@ -132,7 +235,9 @@ def execute_action(
         tool_to_call = tool_calls[0].function
         tool_name = tool_to_call.name
         tool_args = json.loads(tool_to_call.arguments)
-        logging.info(f"Executing tool: {tool_name} with arguments: {tool_args}")
+        logging.info(
+            f"Executing tool: {tool_name} with arguments: {tool_args}, html part: {part}"
+        )
         plugin.call_tool(tool_name, **tool_args)
         return True
 
@@ -141,7 +246,7 @@ def execute_action(
 
 def main():
     websites_visited: list[Website] = []
-    domain = "czc.cz"
+    domain = "news.ycombinator.com"
     start_url = f"https://{domain}"
 
     client = OpenAI()
@@ -162,81 +267,7 @@ def main():
             plugin.navigate_to_url(start_url)
             continue
 
-        prompt_description = cleandoc(
-            f"""
-            Analyze the following HTML and provide a specific and  extensive 
-            description of its contents. Imagine you are describing the page
-            to a person who cannot see it.
-
-            The description should list interactive elements, such as links, 
-            buttons or forms. It should also explain the specific purpose of
-            the page and its content. When describing the content, think about
-            the specific subpage you are visiting instead the whole web portal.
-            
-            Each element should be represented by a separate record:
-
-            INCORRECT EXAMPLE:
-            Links to specific categories like 'Oblíbené inzeráty', 'Moje inzeráty', and 'Přidat inzerát'
-
-            CORRECT EXAMPLE:
-            Link to the category 'Oblíbené inzeráty' - A link to the user's favorite ads
-            Link to the category 'Moje inzeráty' - A link to the user's ads
-            Link to the category 'Přidat inzerát' - A link to the form for adding a new ad
-
-            Title: {title}
-
-            {html}
-            """
-        )
-
-        describe_function: ChatCompletionToolParam = {
-            "type": "function",
-            "function": {
-                "name": "describe_html",
-                "description": "Describe the subpage from its HTML",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "basic_purpose": {
-                            "type": "string",
-                            "description": "Top level description of the subpage's purpose. E.g. 'This is a form for adding a new user'",
-                        },
-                        "interactive_elements": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "type": {
-                                        "type": "string",
-                                        "description": "Type of the interactive element. E.g. 'link', 'button'",
-                                    },
-                                    "description": {
-                                        "type": "string",
-                                        "description": "Description of the interactive element. E.g. 'A link to the homepage'",
-                                    },
-                                },
-                            },
-                            "description": "List of interactive elements on the page. E.g. 'A link to the homepage'",
-                        },
-                    },
-                },
-            },
-        }
-
-        completion = client.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
-            messages=[{"role": "user", "content": prompt_description}],
-            tools=[describe_function],
-            tool_choice={"type": "function", "function": {"name": "describe_html"}},
-            temperature=0.1,
-        )
-
-        tool_calls = completion.choices[0].message.tool_calls
-        if not tool_calls or len(tool_calls) == 0:
-            logging.error("No description tool called.")
-            break
-
-        description = json.loads(tool_calls[0].function.arguments)
+        description = describe_html(client, plugin)
         description = description_to_string(description)
         logging.info(f"Description generated:\n {description}")
 
@@ -278,7 +309,7 @@ def main():
 
             {str(website_current.actions)}
 
-            Please recommend 3 actions to perform next and explain the
+            Please recommend up to 5 actions to perform next and explain the
             reasoning behind your recommendation.
             """
         )
@@ -294,8 +325,17 @@ def main():
                         "actions": {
                             "type": "array",
                             "items": {
-                                "type": "string",
-                                "description": "Recommended action to perform next",
+                                "type": "object",
+                                "properties": {
+                                    "description": {
+                                        "type": "string",
+                                        "description": "Recommended action to perform next",
+                                    },
+                                    "part": {
+                                        "type": "number",
+                                        "description": "Part of the HTML to which the action is related",
+                                    },
+                                },
                             },
                         }
                     },
@@ -321,10 +361,13 @@ def main():
         if "actions" not in recommendations or len(recommendations["actions"]) == 0:
             logging.info("No recommendations generated. Navigating back to the start")
             plugin.navigate_to_url(start_url)
+            continue
 
         recommendation = random.choice(recommendations["actions"])
+        part = recommendation["part"]
+        recommendation = recommendation["description"]
         logging.info(f"Recommended action: {recommendation}")
-        executed = execute_action(client, plugin, recommendation)
+        executed = execute_action(client, plugin, recommendation, part)
         if executed:
             website_current.actions.append(recommendation)
 
