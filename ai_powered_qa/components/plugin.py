@@ -57,9 +57,6 @@ class Plugin(BaseModel, ABC):
                 break
 
     def call_tool(self, tool_name: str, **kwargs):
-        print(f"\nCalling tool: {tool_name}")
-        print(f"From plugin: {self}")
-        print(f"Tools: {self._callable_tools}\n")
         if tool_name not in self._callable_tools:
             return None
         return self._callable_tools[tool_name](**kwargs)

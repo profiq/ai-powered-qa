@@ -115,13 +115,10 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
                 p: Plugin
                 for p in self.plugins.values():
                     # iterate all plugins until the plugin with correct tool is found
-                    print(f"\nAgent calling tool: {tool_call.function.name}")
-                    print(f"From plugin: {p}")
                     result = p.call_tool(
                         tool_call.function.name,
                         **json.loads(tool_call.function.arguments),
                     )
-                    print(f"Result: {result}\n")
                     if result is not None:
                         break
                 else:

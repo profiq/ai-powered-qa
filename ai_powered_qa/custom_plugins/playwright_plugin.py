@@ -203,7 +203,6 @@ class PlaywrightPlugin(Plugin):
     async def _get_selector_from_coordinates(self, x, y):
         page = await self.ensure_page()
         selector = await page.evaluate(generate_selector_script, [x, y])
-        print(selector)
         return selector
 
     def __init__(self, **data):
