@@ -7,7 +7,7 @@ from openai import OpenAI
 from pydantic import Field
 
 import playwright.async_api
-import playwright.sync_api
+from playwright.async_api import TimeoutError
 from bs4 import BeautifulSoup
 
 from ai_powered_qa.components.plugin import Plugin, tool
@@ -92,17 +92,21 @@ function updateElementScrollability() {
 window.updateElementScrollability = updateElementScrollability;
 
 function setValueAsDataAttribute() {
-  const inputs = document.querySelectorAll('input, textarea, select');
+    const inputs = document.querySelectorAll('input, textarea, select');
 
-  inputs.forEach(input => {
-    const value = input.value;
-    input.setAttribute('data-playwright-value', value);
-  });
+    inputs.forEach(input => {
+        const value = input.value;
+        input.setAttribute('data-playwright-value', value);
+    });
 }
 window.setValueAsDataAttribute = setValueAsDataAttribute;
 """
 
 generate_selector_script = """([x, y]) => {
+    const isSelectorUnique = (selector) => {
+        const elements = document.querySelectorAll(selector);
+        return elements.length === 1;
+    };
     const element = document.elementFromPoint(x, y);
     if (!element) return '';
     let path = '';
@@ -113,22 +117,18 @@ generate_selector_script = """([x, y]) => {
         // Check for a test ID
         const testId = current.getAttribute('data-test-id');
         if (testId) {
-            // Check if test ID is unique
-            const elements = document.querySelectorAll(`[data-test-id='${testId}']`);
-            if (elements.length === 1) {
+            if (isSelectorUnique(selector + `[data-test-id='${testId}']`)) {
                 selector += `[data-test-id='${testId}']`;
-                path = selector + (path ? ' > ' + path : '');
+                path = selector + `[data-test-id='${testId}']` + (path ? ' > ' + path : '');
                 break;
             }
         }
         // Check for an input name
         const inputName = current.getAttribute('name');
         if (inputName) {
-            // Check if input name is unique
-            const elements = document.querySelectorAll(`[name='${inputName}']`);
-            if (elements.length === 1) {
+            if (isSelectorUnique(selector + `[name='${inputName}']`)) {
                 selector += `[name='${inputName}']`;
-                path = selector + (path ? ' > ' + path : '');
+                path = selector + `[name='${inputName}']` + (path ? ' > ' + path : '');
                 break;
             }
         }
@@ -137,19 +137,27 @@ generate_selector_script = """([x, y]) => {
             path = selector + (path ? ' > ' + path : '');
             break; // ID is unique, no need to go further
         }
-        const className = current.className;
-        if (className && typeof className === 'string') {
-            selector += '.' + className.split(' ').join('.');
+        // Check if selector is unique with just the tag name
+        if (isSelectorUnique(selector + (path ? ' > ' + path : ''))) {
+            path = selector + (path ? ' > ' + path : '');
+            break;
         }
-        const siblings = current.parentElement ? Array.from(current.parentElement.children) : [];
-        if (siblings.length > 1) {
-            const index = siblings.indexOf(current) + 1;
-            selector += ':nth-child(' + index + ')';
+        const className = current.className;
+        selector += className && typeof className === 'string' ? '.' + className.trim().split(/\s+/).join('.') : '';
+        if (isSelectorUnique(selector + (path ? ' > ' + path : ''))) {
+            path = selector + (path ? ' > ' + path : '');
+            break;
+        }
+        // Find siblings with the same class selector
+        const siblingsWithSameClass = current.parentElement ? Array.from(current.parentElement.querySelectorAll(`:scope > ${selector}`)) : [];
+        if (siblingsWithSameClass.length > 1) {
+            // Only add nth-child if there are other siblings with the same class
+            const index = Array.from(current.parentElement.children).indexOf(current) + 1;
+            selector += `:nth-child(${index})`;
         }
         path = selector + (path ? ' > ' + path : '');
         // Check if the path is unique
-        const elements = document.querySelectorAll(path);
-        if (elements.length === 1) {
+        if (isSelectorUnique(path)) {
             break;
         }
     }
@@ -270,27 +278,39 @@ class PlaywrightPlugin(Plugin):
         return f"Navigating to {url} returned status code {response.status if response else 'unknown'}"
 
     @tool
-    def click_element(self, selector: str, timeout: int = 3_000) -> str:
+    def click_element(self, selector: str) -> str:
         """
         Click on an element with the given CSS selector.
 
         :param str selector: CSS selector for the element to click. Be as specific as possible with the selector to ensure only one item is clicked.
-        :param int timeout: Timeout for Playwright to wait for element to be ready.
         """
-        return self.run_async(self._click_element(selector, timeout))
+        return self.run_async(self._click_element(selector))
 
-    async def _click_element(self, selector: str, timeout: int = 3_000) -> str:
+    async def _click_element(self, selector: str) -> str:
+        timeout = 3_000
         page = await self.ensure_page()
         try:
+            # Count the number of elements that match the selector
+            element_count = await page.locator(selector).count()
+
+            # If no elements found
+            if element_count == 0:
+                raise Exception(f"No element found for selector: {selector}")
+
+            # If more than one element found
+            if element_count > 1:
+                raise Exception("Selector returned more than one element.")
             await page.click(
                 selector=selector,
                 timeout=timeout,
             )
+        except TimeoutError:
+            return f"Element did not become clickable within {timeout}ms. It might be obscured by another element."
         except Exception as e:
             print(e)
-            return f"Unable to click on element '{selector}'"
+            return f"Unable to click on element. {e}"
 
-        return f"Clicked element '{selector}'"
+        return f"Element clicked successfully."
 
     @tool
     def fill_element(self, selector: str, text: str):
@@ -383,13 +403,33 @@ class PlaywrightPlugin(Plugin):
     async def _scroll(self, selector: str, direction: str):
         page = await self.ensure_page()
         try:
+            # Get viewport dimensions
             window_height = await page.evaluate("window.innerHeight")
+            window_width = await page.evaluate("window.innerWidth")
+
+            # Get element's bounding box
             bounds = await page.locator(selector).bounding_box()
             if not bounds:
                 return f"Unable to scroll in element '{selector}' as it does not exist"
-            x = bounds["x"] + bounds["width"] / 2
-            y = bounds["y"] + bounds["height"] / 2
-            delta = min(bounds["height"], window_height) * 0.8
+
+            # Calculate the visible part of the element within the viewport
+            visible_x = max(
+                0,
+                min(bounds["x"] + bounds["width"], window_width) - max(bounds["x"], 0),
+            )
+            visible_y = max(
+                0,
+                min(bounds["y"] + bounds["height"], window_height)
+                - max(bounds["y"], 0),
+            )
+
+            # Adjust x and y to be within the visible part of the viewport
+            x = max(bounds["x"], 0) + visible_x / 2
+            y = max(bounds["y"], 0) + visible_y / 2
+
+            # Calculate delta based on the visible part of the element
+            delta = min(visible_y, window_height) * 0.8
+
             await page.mouse.move(x=x, y=y)
             if direction == "up":
                 await page.mouse.wheel(delta_y=-delta, delta_x=0)
@@ -397,11 +437,10 @@ class PlaywrightPlugin(Plugin):
                 await page.mouse.wheel(delta_y=delta, delta_x=0)
             else:
                 return f"Unable to scroll in element '{selector}' as direction '{direction}' is not supported"
-
         except Exception as e:
             print(e)
             return f"Unable to scroll. {e}"
-        return f"Scrolling in {direction} direction was successfully performed."
+        return f"Scrolled successfully."
 
     async def ensure_page(self) -> playwright.async_api.Page:
         if not self._page:

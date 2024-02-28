@@ -15,6 +15,7 @@ from ai_powered_qa.components.utils import generate_short_id
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
 from ai_powered_qa.custom_plugins.planning_plugin import PlanningPlugin
 from ai_powered_qa.ui_common.constants import (
+    AGENT_MODEL_KEY,
     AGENT_TOOL_CALLS_KEY,
     INTERACTION_INSTANCE_KEY,
     TOOL_CALL_KEY,
@@ -38,19 +39,25 @@ st.write(
     unsafe_allow_html=True,
 )
 
-
-sidebar = st.sidebar
-
 agent, agent_store = load_agent(
-    st, default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}}
+    default_kwargs={"plugins": {"PlaywrightPlugin": PlaywrightPlugin()}}
 )
 
-history_name = load_history(st, agent, agent_store)
+history_name = load_history(agent, agent_store)
+
+st.write(st.session_state)
 
 
 def on_commit(value):
-    agent.commit_interaction(interaction=value)
+    st.session_state[USER_MESSAGE_CONTENT_KEY] = None
     del st.session_state[INTERACTION_INSTANCE_KEY]
+    # Reset agent model after commit to save money
+    #  (you need to explicitly request the more expensive models)
+    st.session_state[AGENT_MODEL_KEY] = AVAILABLE_MODELS[0]
+    # Reset tool call back to 'auto' (not often you want the same tool call again)
+    st.session_state[TOOL_CALL_KEY] = "auto"
+    # TODO: clear tool calls
+    agent.commit_interaction(interaction=value)
 
 
 # def on_commit(interaction):
@@ -126,7 +133,6 @@ for i, message in enumerate(agent_messages):
     # TODO: this depends on whether or not the user prompt is present
     if i == len(agent_messages) - interaction_messages + 2:
         st.text("*Interaction messages*")
-        break
     with st.chat_message(message["role"]):
         if message["content"]:
             st.write(message["content"])
@@ -197,12 +203,13 @@ tool_calls = (
     else {}
 )
 
+tools = agent.get_tools_from_plugins()
 
-st.session_state[AGENT_TOOL_CALLS_KEY] = []
-for tool_id, tool_info in tool_calls.items():
-    st.session_state[AGENT_TOOL_CALLS_KEY].append(tool_id)
-    st.session_state[f"{tool_id}_name"] = tool_info["name"]
-    st.session_state[f"{tool_id}_arguments"] = tool_info["arguments"]
+tool_schemas = (
+    {tool["function"]["name"]: tool["function"]["parameters"] for tool in tools}
+    if tools
+    else {}
+)
 
 with st.chat_message("assistant"):
 
@@ -216,16 +223,39 @@ with st.chat_message("assistant"):
         on_change=update_agent_message_content,
     )
 
-    def update_tool_call(tool_id):
-        arguments = st.session_state[f"{tool_id}_arguments"]
+    def update_tool_call(tool_id, param_name):
+        param_value = st.session_state[f"{tool_id}_{param_name}"]
         for tool_call in interaction.agent_response.tool_calls:
             if tool_call.id == tool_id:
-                tool_call.function.arguments = arguments
+                original_arguments = json.loads(tool_call.function.arguments)
+                original_arguments[param_name] = param_value
+                tool_call.function.arguments = json.dumps(original_arguments)
 
-    for tool_id in st.session_state[AGENT_TOOL_CALLS_KEY]:
-        tool_name = st.session_state[f"{tool_id}_name"]
+    for tool_id, tool_info in tool_calls.items():
+        # st.session_state[f"{tool_id}_name"] = tool_info["name"]
+        # st.session_state[f"{tool_id}_arguments"] = tool_info["arguments"]
+
+        tool_name = tool_info["name"]
         st.write(f"**{tool_name}** (id: {tool_id})")
 
+        tool_schema = tool_schemas[tool_name]
+
+        assert tool_schema["type"] == "object"
+
+        arguments = json.loads(tool_info["arguments"])
+
+        for param_name, param_schema in tool_schema["properties"].items():
+            st.session_state[f"{tool_id}_{param_name}"] = arguments.get(
+                param_name, param_schema.get("default", "")
+            )
+            st.text_area(
+                param_name,
+                key=f"{tool_id}_{param_name}",
+                on_change=update_tool_call,
+                args=(tool_id, param_name),
+            )
+
+        # TODO: move definitions to the top of the page
         def remove_tool_call():
             interaction.agent_response.tool_calls = [
                 tool_call
@@ -235,12 +265,12 @@ with st.chat_message("assistant"):
 
         st.button("Remove", on_click=remove_tool_call, key=f"{tool_id}_remove")
 
-        st.text_input(
-            "Arguments",
-            key=f"{tool_id}_arguments",
-            on_change=update_tool_call,
-            args=(tool_id,),
-        )
+        # st.text_input(
+        #     "Arguments",
+        #     key=f"{tool_id}_arguments",
+        #     on_change=update_tool_call,
+        #     args=(tool_id,),
+        # )
 
     with st.form("new_tool_call"):
 

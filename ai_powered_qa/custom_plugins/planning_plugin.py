@@ -1,8 +1,4 @@
-import os
-from pydantic import field_validator
-
 from ai_powered_qa.components.plugin import Plugin, tool
-from ai_powered_qa.components.agent import Agent
 
 
 class PlanningPlugin(Plugin):
@@ -31,3 +27,7 @@ class PlanningPlugin(Plugin):
         """
         self._plan = new_plan
         return "Plan updated successfully"
+
+    def reset_history(self, history):
+        self._plan = ""
+        super().reset_history(history)
