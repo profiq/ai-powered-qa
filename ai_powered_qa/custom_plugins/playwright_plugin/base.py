@@ -48,10 +48,10 @@ class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
     client: Any = Field(default_factory=OpenAI, exclude=True)
 
-    _playwright: playwright.async_api.Playwright | None
-    _browser: playwright.async_api.Browser | None
-    _page: playwright.async_api.Page | None
-    _buffer: bytes | None
+    _playwright: playwright.async_api.Playwright | None = None
+    _browser: playwright.async_api.Browser | None = None
+    _page: playwright.async_api.Page | None = None
+    _buffer: bytes | None = None
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -85,6 +85,17 @@ class PlaywrightPlugin(Plugin):
     @property
     def buffer(self) -> bytes:
         return bytes(self._buffer) if self._buffer else b""
+
+    @property
+    def html(self) -> str:
+        return self._run_async(self._get_page_content())
+
+    @property
+    def title(self) -> str:
+        if self._page:
+            return self._run_async(self._page.title())
+        else:
+            return ""
 
     @tool
     def navigate_to_url(self, url: str):
@@ -177,13 +188,29 @@ class PlaywrightPlugin(Plugin):
     async def _press_enter(self):
         page = await self._ensure_page()
         try:
-            await page.keyboard.press("Enter")
+            await page.locator('*:focus').press("Enter")
         except Exception as e:
             print(e)
             return f"Unable to press Enter. {e}"
         return "Enter key was successfully pressed."
 
     @tool
+    def go_back(self):
+        """
+        Navigate to the previous page in the browser history.
+        """
+        return self._run_async(self._go_back())
+
+    async def _go_back(self):
+        page = await self._ensure_page()
+        try:
+            await page.go_back()
+        except Exception as e:
+            print(e)
+            return f"Unable to go back. {e}"
+        return "Navigated to the previous page in the browser history."
+
+    # @tool
     def assert_that(self, selector: str, action: str, value: str | None = None):
         """
         {

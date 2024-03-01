@@ -7,7 +7,7 @@ from . import base
 
 class PlaywrightPluginHtmlPaging(base.PlaywrightPlugin):
     name: str = "PlaywrightPluginHtmlPaging"
-    html_part_length: int = 15000
+    html_part_length: int = 12000
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -49,6 +49,12 @@ class PlaywrightPluginHtmlPaging(base.PlaywrightPlugin):
             """
         )
 
+    @property
+    def html(self):
+        html = self._run_async(self._get_page_content())
+        html, _ = self._get_html_part(html)
+        return html
+
     @tool
     def move_to_html_part(self, part: int):
         """
@@ -60,7 +66,7 @@ class PlaywrightPluginHtmlPaging(base.PlaywrightPlugin):
         self._part = part
         return f"Moved to HTML part {self._part}"
 
-    def _get_html_part(self, html: str) -> str:
+    def _get_html_part(self, html: str) -> tuple[str, int]:
         """
         Splits the HTML content into parts of about self.part_length characters.
         Always performs a split at a tag start character.
