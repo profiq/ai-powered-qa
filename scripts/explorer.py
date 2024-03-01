@@ -93,8 +93,9 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
         description of its contents. Imagine you are describing the page
         to a person who cannot see it.
 
-        The description should list interactive elements, such as links, 
-        buttons or forms. It should also explain the specific purpose of
+        Describe each main section (for example main menu, search, footer, filters) 
+        of the subpage. The description of each section should list interactive 
+        elements, such as links, buttons or forms. It should also explain the specific purpose of
         the page and its content. When describing the content, think about
         the specific subpage you are visiting instead the whole web portal.
         
@@ -104,9 +105,17 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
         Links to specific categories like 'Oblíbené inzeráty', 'Moje inzeráty', and 'Přidat inzerát'
 
         CORRECT EXAMPLE:
-        Link to the category 'Oblíbené inzeráty' - A link to the user's favorite ads
-        Link to the category 'Moje inzeráty' - A link to the user's ads
-        Link to the category 'Přidat inzerát' - A link to the form for adding a new ad
+        A link to the user's favorite ads
+        A link to the user's ads
+        A link to the form for adding a new ad
+
+        On the other hand, avoid being too specific, describe the purpose of the element 
+        instead of its specific content.
+
+        CORRECT EXAMPLE:
+        Link to an external article
+        Link to a login form
+        Link to FAQ
 
         Title: {title}
 
@@ -126,22 +135,35 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
                         "type": "string",
                         "description": "Top level description of the subpage's purpose. E.g. 'This is a form for adding a new user'",
                     },
-                    "interactive_elements": {
+                    "sections": {
                         "type": "array",
+                        "description": "List of sections on the page. E.g. 'A list of products', 'A form for adding a new user'",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "type": {
-                                    "type": "string",
-                                    "description": "Type of the interactive element. E.g. 'link', 'button'",
-                                },
                                 "description": {
                                     "type": "string",
-                                    "description": "Description of the interactive element. E.g. 'A link to the homepage'",
+                                    "description": "Description of the section. E.g. 'A list of products'",
+                                },
+                                "interactive_elements": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "type": {
+                                                "type": "string",
+                                                "description": "Type of the interactive element. E.g. 'link', 'button'",
+                                            },
+                                            "description": {
+                                                "type": "string",
+                                                "description": "Description of the interactive element. E.g. 'A link to the homepage'",
+                                            },
+                                        },
+                                    },
+                                    "description": "List of interactive elements on the page. E.g. 'A link to the homepage'",
                                 },
                             },
                         },
-                        "description": "List of interactive elements on the page. E.g. 'A link to the homepage'",
                     },
                 },
             },
@@ -179,20 +201,30 @@ def description_to_string(description: dict) -> str:
     for part, desc in description.items():
         description_text += f"Part {part}:\n"
         description_text += description_part_to_string(desc)
+        description_text += "\n\n"
 
     return description_text
 
 
 def description_part_to_string(description: dict) -> str:
-    elements = "\n".join(
-        f"{e['type']}: {e['description']}" for e in description["interactive_elements"]
-    )
-    return f"""
-        Basic purpose: {description['basic_purpose']}
+    description_parts = ["Basic purpose: " + description["basic_purpose"]]
 
-        Interactive elements: 
-        {elements}
-        """
+    for section in description["sections"]:
+        elements = "\n".join(
+            f"{e['type']}: {e['description']}" for e in section["interactive_elements"]
+        )
+        description_parts.append(
+            cleandoc(
+                """
+                Section: {description}
+
+                Interactive elements: 
+                {elements}
+                """
+            ).format(description=section["description"], elements=elements)
+        )
+
+    return "\n\n".join(description_parts)
 
 
 def execute_action(
