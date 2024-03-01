@@ -1,9 +1,10 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from inspect import cleandoc
 import json
 import logging
 import random
 import time
+import yaml
 
 import numpy as np
 from openai import OpenAI
@@ -18,10 +19,9 @@ from ai_powered_qa.custom_plugins.playwright_plugin.html_paging import (
 class Website:
     urls: list[str]
     title: str
-    description: str
+    parts_description: dict
     embedding: np.ndarray
     actions: list[str] = field(default_factory=list)
-
 
 logging.basicConfig(level=logging.INFO)
 
@@ -284,10 +284,10 @@ def main():
     client = OpenAI()
     plugin = PlaywrightPluginHtmlPaging(name="playwright", client=client)
     plugin.navigate_to_url(start_url)
-    time.sleep(5)
+    time.sleep(3)
     accept_cookies_if_present(client, plugin)
 
-    for _ in range(10):
+    for _ in range(5):
         time.sleep(3)
         plugin._part = 1
         html = plugin.html
@@ -300,8 +300,8 @@ def main():
             continue
 
         description = describe_html(client, plugin)
-        description = description_to_string(description)
-        logging.info(f"Description generated:\n {description}")
+        description_text = description_to_string(description)
+        logging.info(f"Description generated:\n {description_text}")
 
         response = client.embeddings.create(model="text-embedding-3-small", input=html)
         embedding = np.array(response.data[0].embedding)
@@ -408,9 +408,9 @@ def main():
     print("Websites visited:")
 
     for w in websites_visited:
-        print(w.urls)
-        print(w.description)
-        print(w.actions)
+        w_dict = asdict(w)
+        del w_dict["embedding"]
+        print(yaml.dump(w_dict))
         print("--------")
 
 
