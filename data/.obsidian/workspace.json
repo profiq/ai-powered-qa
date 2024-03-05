@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "035c4556c4c750f7",
+        "id": "2f3beee6307031f3",
         "type": "tabs",
         "children": [
           {
-            "id": "78649fde77cea418",
+            "id": "24a5b995800fa326",
             "type": "leaf",
             "state": {
               "type": "empty",
@@ -138,7 +138,7 @@
       "command-palette:Open command palette": false
     }
   },
-  "active": "78649fde77cea418",
+  "active": "24a5b995800fa326",
   "lastOpenFiles": [
     "daily/2024-02-05.md",
     "resources/Releasing our image generator v3.md",

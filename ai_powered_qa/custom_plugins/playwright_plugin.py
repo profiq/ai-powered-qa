@@ -102,67 +102,41 @@ function setValueAsDataAttribute() {
 window.setValueAsDataAttribute = setValueAsDataAttribute;
 """
 
-generate_selector_script = """([x, y]) => {
-    const isSelectorUnique = (selector) => {
-        const elements = document.querySelectorAll(selector);
-        return elements.length === 1;
-    };
+generate_selector_script = """(([x, y]) => {
+    // Find the element at the given coordinates.
     const element = document.elementFromPoint(x, y);
     if (!element) return '';
+
     let path = '';
-    for (let current = element; current; current = current.parentElement) {
-        const name = current.localName;
-        if (!name) break;
-        let selector = name;
-        // Check for a test ID
+    for (let current = element; current && current !== document.body; current = current.parentElement) {
+        let selector = current.localName; // Always include the tag name.
+
+        // Include the ID if present.
+        if (current.id) {
+            selector += `#${current.id}`;
+        }
+
+        // Include class names if present.
+        if (current.className && typeof current.className === 'string') {
+            const classes = current.className.trim().split(/\s+/).join('.');
+            if (classes) {
+                selector += `.${classes}`;
+            }
+        }
+
+        // Include data-test-id if present.
         const testId = current.getAttribute('data-test-id');
         if (testId) {
-            if (isSelectorUnique(selector + `[data-test-id='${testId}']`)) {
-                selector += `[data-test-id='${testId}']`;
-                path = selector + `[data-test-id='${testId}']` + (path ? ' > ' + path : '');
-                break;
-            }
+            selector += `[data-test-id='${testId}']`;
         }
-        // Check for an input name
-        const inputName = current.getAttribute('name');
-        if (inputName) {
-            if (isSelectorUnique(selector + `[name='${inputName}']`)) {
-                selector += `[name='${inputName}']`;
-                path = selector + `[name='${inputName}']` + (path ? ' > ' + path : '');
-                break;
-            }
-        }
-        if (current.id) {
-            selector += '#' + current.id;
-            path = selector + (path ? ' > ' + path : '');
-            break; // ID is unique, no need to go further
-        }
-        // Check if selector is unique with just the tag name
-        if (isSelectorUnique(selector + (path ? ' > ' + path : ''))) {
-            path = selector + (path ? ' > ' + path : '');
-            break;
-        }
-        const className = current.className;
-        selector += className && typeof className === 'string' ? '.' + className.trim().split(/\s+/).join('.') : '';
-        if (isSelectorUnique(selector + (path ? ' > ' + path : ''))) {
-            path = selector + (path ? ' > ' + path : '');
-            break;
-        }
-        // Find siblings with the same class selector
-        const siblingsWithSameClass = current.parentElement ? Array.from(current.parentElement.querySelectorAll(`:scope > ${selector}`)) : [];
-        if (siblingsWithSameClass.length > 1) {
-            // Only add nth-child if there are other siblings with the same class
-            const index = Array.from(current.parentElement.children).indexOf(current) + 1;
-            selector += `:nth-child(${index})`;
-        }
+
+        // Prepend the current selector to the path with a ' > ' if path is not empty.
         path = selector + (path ? ' > ' + path : '');
-        // Check if the path is unique
-        if (isSelectorUnique(path)) {
-            break;
-        }
     }
-    return path;
-}
+
+    // Prepend 'body' tag to the path as the starting point.
+    return 'body' + (path ? ' > ' + path : '');
+})
 """
 
 describe_html_system_message = """You are an HTML interpreter assisting in web automation. Given HTML code of a page, you should return a natural language description of how the page probably looks.
@@ -204,6 +178,14 @@ class PlaywrightPlugin(Plugin):
         page = await self.ensure_page()
         selector = await page.evaluate(generate_selector_script, [x, y])
         return selector
+
+    def get_elements_count_for_selector(self, selector: str):
+        return self.run_async(self._get_elements_count_for_selector(selector))
+
+    async def _get_elements_count_for_selector(self, selector: str):
+        page = await self.ensure_page()
+        count = await page.locator(selector).count()
+        return count
 
     def __init__(self, **data):
         super().__init__(**data)
