@@ -1,14 +1,14 @@
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from inspect import cleandoc
 import json
 import logging
 import random
 import time
-import yaml
 
 import numpy as np
 from openai import OpenAI
 from openai.types.chat.chat_completion_tool_param import ChatCompletionToolParam
+import yaml
 
 from ai_powered_qa.custom_plugins.playwright_plugin.html_paging import (
     PlaywrightPluginHtmlPaging,
@@ -21,7 +21,8 @@ class Website:
     title: str
     parts_description: dict
     embedding: np.ndarray
-    actions: list[str] = field(default_factory=list)
+    actions: list[dict] = field(default_factory=list)
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -182,7 +183,7 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
                 }
             ],
             tools=[describe_function],
-            temperature=0.1,
+            temperature=0.05,
             tool_choice={"type": "function", "function": {"name": "describe_html"}},
         )
 
@@ -236,6 +237,10 @@ def execute_action(
         You are an expert on executing action on the web. You are given
         a website HTML, it's short text description and an action to perform
 
+        If a login is required, please use the following credentials:
+        username: standard_user
+        password: secret_sauce
+
         If a tool requires a selector, the selector has to be
         compatible with Playwright and the element should be present
         in HTML.
@@ -278,56 +283,81 @@ def execute_action(
 
 def main():
     websites_visited: list[Website] = []
-    domain = "news.ycombinator.com"
+    domain = "bazos.cz"
     start_url = f"https://{domain}"
 
     client = OpenAI()
     plugin = PlaywrightPluginHtmlPaging(name="playwright", client=client)
     plugin.navigate_to_url(start_url)
-    time.sleep(3)
+    time.sleep(2)
     accept_cookies_if_present(client, plugin)
 
     for _ in range(5):
-        time.sleep(3)
+        time.sleep(2)
         plugin._part = 1
         html = plugin.html
         title = plugin.title
         url = plugin._page.url if plugin._page else None
+
+        if not url:
+            logging.info("No URL found. Navigating back to the start")
+            plugin.navigate_to_url(start_url)
+            continue
 
         if url and domain not in url:
             logging.info(f"Left the domain of {domain}. Navigating back to the start")
             plugin.navigate_to_url(start_url)
             continue
 
-        description = describe_html(client, plugin)
-        description_text = description_to_string(description)
-        logging.info(f"Description generated:\n {description_text}")
+        website_current = get_website_by_url(websites_visited, url)
 
-        response = client.embeddings.create(model="text-embedding-3-small", input=html)
-        embedding = np.array(response.data[0].embedding)
-        website_current = Website([url] if url else [], title, description, embedding)
-
-        if len(websites_visited) > 0:
-            website_similar = find_similar(websites_visited, website_current)
-            if website_similar:
-                logging.info(f"Found similar website: {website_similar.urls[0]}")
-                website_current = website_similar
-                if url and url not in website_current.urls:
-                    website_current.urls.append(url)
-            else:
-                websites_visited.append(website_current)
+        if website_current:
+            logging.info(f"Already visited website: {url}")
         else:
-            websites_visited.append(website_current)
+            description = describe_html(client, plugin)
+            description_text = description_to_string(description)
+            logging.info(f"Description generated:\n {description_text}")
+            response = client.embeddings.create(
+                model="text-embedding-3-small", input=html
+            )
+            embedding = np.array(response.data[0].embedding)
+            website_current = Website(
+                [url] if url else [], title, description, embedding
+            )
+
+            if len(websites_visited) == 0:
+                websites_visited.append(website_current)
+            else:
+                website_similar = find_similar(websites_visited, website_current)
+                if website_similar:
+                    logging.info(f"Found similar website: {website_similar.urls[0]}")
+                    website_current = website_similar
+                    if url and url not in website_current.urls:
+                        website_current.urls.append(url)
+                else:
+                    websites_visited.append(website_current)
 
         prompt_recommend = cleandoc(
             f"""
             You are a web crawler. Your goal is to analyze the textual 
             description of a webpage provided to you and recommend a next 
-            action to perform to explore a given website further and learn
-            about it as much as possible.
+            action to perform or a sequence of actions that need to be executed
+            together. Choose actions that maximize learning new things about
+            the website.
 
-            You can perform one of the following actions:
+            Here are some examples of good recommendation:
+            - Login with username and password
+            - Search for a MacBook
+            - Switch to a different city
+            - Visit a 'PC' category
+            - Add the item to the cart
+            - Send a contact form with a sample question
+
+            You only have access to following tools:
             - Click on a link or button
+            - Fill an input element
+
+            Only consider elements listed in the description of the current page.
 
             Here is the textual description of the current page:
 
@@ -341,8 +371,8 @@ def main():
 
             {str(website_current.actions)}
 
-            Please recommend up to 5 actions to perform next and explain the
-            reasoning behind your recommendation.
+            Please recommend up to 5 actions or sequences of actions to perform next 
+            and explain the reasoning behind your recommendation.
             """
         )
 
@@ -361,13 +391,14 @@ def main():
                                 "properties": {
                                     "description": {
                                         "type": "string",
-                                        "description": "Recommended action to perform next",
+                                        "description": "Recommended action or sequence of actions to perform next",
                                     },
                                     "part": {
                                         "type": "number",
                                         "description": "Part of the HTML to which the action is related",
                                     },
                                 },
+                                "required": ["description", "part"],
                             },
                         }
                     },
@@ -376,7 +407,7 @@ def main():
         }
 
         completion = client.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
+            model="gpt-4-turbo-preview",
             messages=[{"role": "user", "content": prompt_recommend}],
             tools=[recommend_actions_tool],
             temperature=0.1,
@@ -399,9 +430,17 @@ def main():
         part = recommendation["part"]
         recommendation = recommendation["description"]
         logging.info(f"Recommended action: {recommendation}")
+
         executed = execute_action(client, plugin, recommendation, part)
         if executed:
-            website_current.actions.append(recommendation)
+            action_status = "success" if plugin.html != html else "failure"
+        else:
+            action_status = "failure"
+
+        logging.info(f"Action status: {action_status}")
+        website_current.actions.append(
+            {"description": recommendation, "status": action_status}
+        )
 
     plugin.close()
     print("Exploration finished.")
@@ -412,6 +451,13 @@ def main():
         del w_dict["embedding"]
         print(yaml.dump(w_dict))
         print("--------")
+
+
+def get_website_by_url(websites: list[Website], url: str) -> Website | None:
+    for w in websites:
+        if url in w.urls:
+            return w
+    return None
 
 
 if __name__ == "__main__":

@@ -131,7 +131,9 @@ class PlaywrightPlugin(Plugin):
     async def _click_element(self, selector: str) -> str:
         page = await self._ensure_page()
         try:
-            await page.locator(selector).first.click(timeout=config.PLAYWRIGHT_TIMEOUT)
+            await page.locator(selector).first.click(
+                timeout=config.PLAYWRIGHT_TIMEOUT, force=True
+            )
         except Exception as e:
             print(e)
             return f"Unable to click on element '{selector}'"
@@ -152,7 +154,7 @@ class PlaywrightPlugin(Plugin):
         page = await self._ensure_page()
         try:
             await page.locator(selector).first.fill(
-                text, timeout=config.PLAYWRIGHT_TIMEOUT
+                text, timeout=config.PLAYWRIGHT_TIMEOUT, force=True
             )
         except Exception as e:
             print(e)
@@ -188,7 +190,7 @@ class PlaywrightPlugin(Plugin):
     async def _press_enter(self):
         page = await self._ensure_page()
         try:
-            await page.locator('*:focus').press("Enter")
+            await page.locator("*:focus").press("Enter")
         except Exception as e:
             print(e)
             return f"Unable to press Enter. {e}"
