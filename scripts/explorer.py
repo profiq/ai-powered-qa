@@ -22,6 +22,7 @@ class Website:
     parts_description: dict
     embedding: np.ndarray
     actions: list[dict] = field(default_factory=list)
+    from_websites: list[int] = field(default_factory=list)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -117,6 +118,11 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
         Link to an external article
         Link to a login form
         Link to FAQ
+        Link to a category
+        Link to a product page
+        Link to shopping cart
+        Location input
+        Language switcher
 
         Title: {title}
 
@@ -160,6 +166,7 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
                                                 "description": "Description of the interactive element. E.g. 'A link to the homepage'",
                                             },
                                         },
+                                        "required": ["type", "description"],
                                     },
                                     "description": "List of interactive elements on the page. E.g. 'A link to the homepage'",
                                 },
@@ -167,6 +174,7 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
                         },
                     },
                 },
+                "required": ["basic_purpose", "sections"],
             },
         },
     }
@@ -230,16 +238,17 @@ def description_part_to_string(description: dict) -> str:
 
 def execute_action(
     client: OpenAI, plugin: PlaywrightPluginHtmlPaging, action: str, part: int = 1
-) -> bool:
+):
     plugin.move_to_html_part(part)
     prompt_execute = cleandoc(
         f"""
         You are an expert on executing action on the web. You are given
-        a website HTML, it's short text description and an action to perform
+        a website HTML, it's short text description and an action to perform.
+        You can execute a sequence of multiple actions if needed.
 
         If a login is required, please use the following credentials:
-        username: standard_user
-        password: secret_sauce
+        username: 
+        password: 
 
         If a tool requires a selector, the selector has to be
         compatible with Playwright and the element should be present
@@ -257,33 +266,44 @@ def execute_action(
 
     plugin.move_to_html_part(1)
 
-    completion = client.chat.completions.create(
-        model="gpt-3.5-turbo-0125",
-        messages=[
-            {"role": "system", "content": plugin.system_message},
-            {"role": "user", "content": prompt_execute},
-        ],
-        tools=plugin.tools,
-        temperature=0.2,
-    )
+    messages = [
+        {"role": "system", "content": plugin.system_message},
+        {"role": "user", "content": prompt_execute},
+    ]
 
-    tool_calls = completion.choices[0].message.tool_calls
-    if tool_calls and len(tool_calls) > 0:
-        tool_to_call = tool_calls[0].function
-        tool_name = tool_to_call.name
-        tool_args = json.loads(tool_to_call.arguments)
-        logging.info(
-            f"Executing tool: {tool_name} with arguments: {tool_args}, html part: {part}"
+    while True:
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo-0125",
+            messages=messages,
+            tools=plugin.tools,
+            temperature=0.1,
         )
-        plugin.call_tool(tool_name, **tool_args)
-        return True
 
-    return False
+        tool_calls = completion.choices[0].message.tool_calls
+        messages.append(completion.choices[0].message)
+        if tool_calls and len(tool_calls) > 0:
+            for tool_call in tool_calls:
+                tool_to_call = tool_call.function
+                tool_name = tool_to_call.name
+                tool_args = json.loads(tool_to_call.arguments)
+                logging.info(
+                    f"Executing tool: {tool_name} with arguments: {tool_args}, html part: {part}"
+                )
+                plugin.call_tool(tool_name, **tool_args)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "content": "OK",
+                        "tool_call_id": tool_call.id,
+                    }
+                )
+        else:
+            break
 
 
 def main():
     websites_visited: list[Website] = []
-    domain = "bazos.cz"
+    domain = "news.ycombinator.com"
     start_url = f"https://{domain}"
 
     client = OpenAI()
@@ -291,8 +311,9 @@ def main():
     plugin.navigate_to_url(start_url)
     time.sleep(2)
     accept_cookies_if_present(client, plugin)
+    action_status = "failure"
 
-    for _ in range(5):
+    for _ in range(15):
         time.sleep(2)
         plugin._part = 1
         html = plugin.html
@@ -302,12 +323,21 @@ def main():
         if not url:
             logging.info("No URL found. Navigating back to the start")
             plugin.navigate_to_url(start_url)
+            website_current = None
             continue
 
         if url and domain not in url:
             logging.info(f"Left the domain of {domain}. Navigating back to the start")
             plugin.navigate_to_url(start_url)
+            website_current = None
             continue
+
+        website_previous_id = None
+
+        for i, w in enumerate(websites_visited):
+            if w == website_current:
+                website_previous_id = i
+                break
 
         website_current = get_website_by_url(websites_visited, url)
 
@@ -337,110 +367,32 @@ def main():
                 else:
                     websites_visited.append(website_current)
 
-        prompt_recommend = cleandoc(
-            f"""
-            You are a web crawler. Your goal is to analyze the textual 
-            description of a webpage provided to you and recommend a next 
-            action to perform or a sequence of actions that need to be executed
-            together. Choose actions that maximize learning new things about
-            the website.
+        if (
+            website_previous_id is not None
+            and website_previous_id not in website_current.from_websites
+            and action_status == "success"
+        ):
+            website_current.from_websites.append(website_previous_id)
 
-            Here are some examples of good recommendation:
-            - Login with username and password
-            - Search for a MacBook
-            - Switch to a different city
-            - Visit a 'PC' category
-            - Add the item to the cart
-            - Send a contact form with a sample question
+        if len(website_current.actions) == 0:
+            try:
+                website_current.actions = get_action_recommendations(
+                    client, website_current
+                )
+            except ValueError as e:
+                logging.info(f"No action recommendations: {e}")
+                plugin.navigate_to_url(start_url)
+                continue
 
-            You only have access to following tools:
-            - Click on a link or button
-            - Fill an input element
-
-            Only consider elements listed in the description of the current page.
-
-            Here is the textual description of the current page:
-
-            URL: {url}
-            Title: {title}
-
-            {description}
-
-            Here is the list of actions you have alread performed on
-            this subpage, avoid repeating them:
-
-            {str(website_current.actions)}
-
-            Please recommend up to 5 actions or sequences of actions to perform next 
-            and explain the reasoning behind your recommendation.
-            """
-        )
-
-        recommend_actions_tool: ChatCompletionToolParam = {
-            "type": "function",
-            "function": {
-                "name": "recommend_actions",
-                "description": "Recommend actions to perform next",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "actions": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "description": {
-                                        "type": "string",
-                                        "description": "Recommended action or sequence of actions to perform next",
-                                    },
-                                    "part": {
-                                        "type": "number",
-                                        "description": "Part of the HTML to which the action is related",
-                                    },
-                                },
-                                "required": ["description", "part"],
-                            },
-                        }
-                    },
-                },
-            },
-        }
-
-        completion = client.chat.completions.create(
-            model="gpt-4-turbo-preview",
-            messages=[{"role": "user", "content": prompt_recommend}],
-            tools=[recommend_actions_tool],
-            temperature=0.1,
-            tool_choice={"type": "function", "function": {"name": "recommend_actions"}},
-        )
-
-        tool_calls = completion.choices[0].message.tool_calls
-        if not tool_calls or len(tool_calls) == 0:
-            logging.error("No recommendation tool called.")
-            break
-
-        recommendations = json.loads(tool_calls[0].function.arguments)
-
-        if "actions" not in recommendations or len(recommendations["actions"]) == 0:
-            logging.info("No recommendations generated. Navigating back to the start")
-            plugin.navigate_to_url(start_url)
-            continue
-
-        recommendation = random.choice(recommendations["actions"])
+        actions_to_recommend = [a for a in website_current.actions if "status" not in a]
+        recommendation = random.choice(actions_to_recommend)
         part = recommendation["part"]
-        recommendation = recommendation["description"]
-        logging.info(f"Recommended action: {recommendation}")
+        logging.info(f"Recommended action: {recommendation['description']}")
 
-        executed = execute_action(client, plugin, recommendation, part)
-        if executed:
-            action_status = "success" if plugin.html != html else "failure"
-        else:
-            action_status = "failure"
-
+        execute_action(client, plugin, recommendation["description"], part)
+        action_status = "success" if plugin.html != html else "failure"
         logging.info(f"Action status: {action_status}")
-        website_current.actions.append(
-            {"description": recommendation, "status": action_status}
-        )
+        recommendation["status"] = action_status
 
     plugin.close()
     print("Exploration finished.")
@@ -452,12 +404,107 @@ def main():
         print(yaml.dump(w_dict))
         print("--------")
 
+    print("digraph G {")
+    for i, w in enumerate(websites_visited):
+        print(f'w_{i} [label="{w.urls[0]}"];')
+
+    for i, w in enumerate(websites_visited):
+        for j in w.from_websites:
+            print(f"w_{j} -> w_{i};")
+    print("}")
+
 
 def get_website_by_url(websites: list[Website], url: str) -> Website | None:
     for w in websites:
         if url in w.urls:
             return w
     return None
+
+
+def get_action_recommendations(client: OpenAI, website: Website) -> list[dict]:
+    prompt_recommend = cleandoc(
+        f"""
+        You are a web crawler. Your goal is to analyze the textual 
+        description of a webpage provided to you and recommend a next 
+        action to perform or a sequence of actions that need to be executed
+        together. Choose actions that maximize learning new things about
+        the website.
+
+        Here are some examples of good recommendation:
+        - Login with username and password
+        - Search for a MacBook
+        - Switch to a different city
+        - Visit a 'PC' category
+        - Add the item to the cart
+        - Send a contact form with a sample question
+
+        You only have access to following tools:
+        - Click on a link or button
+        - Login with username and password
+        - Fill and submit a whole form at once
+
+        Only consider elements listed in the description of the current page.
+
+        Here is the textual description of the current page:
+
+        URL: {website.urls[0]}
+        Title: {website.title}
+
+        {description_to_string(website.parts_description)}
+
+        Please recommend up to 5 actions or sequences of actions to perform next 
+        and explain the reasoning behind your recommendation.
+        """
+    )
+
+    recommend_actions_tool: ChatCompletionToolParam = {
+        "type": "function",
+        "function": {
+            "name": "recommend_actions",
+            "description": "Recommend actions to perform next",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "actions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "description": {
+                                    "type": "string",
+                                    "description": "Recommended action or sequence of actions to perform next",
+                                },
+                                "part": {
+                                    "type": "number",
+                                    "description": "Part of the HTML to which the action is related",
+                                },
+                            },
+                            "required": ["description", "part"],
+                        },
+                    }
+                },
+            },
+        },
+    }
+
+    completion = client.chat.completions.create(
+        model="gpt-4-turbo-preview",
+        messages=[{"role": "user", "content": prompt_recommend}],
+        tools=[recommend_actions_tool],
+        temperature=0.1,
+        tool_choice={"type": "function", "function": {"name": "recommend_actions"}},
+    )
+
+    tool_calls = completion.choices[0].message.tool_calls
+    if not tool_calls or len(tool_calls) == 0:
+        raise ValueError("No recommendation tool called.")
+
+    recommendations = json.loads(tool_calls[0].function.arguments)
+
+    if "actions" not in recommendations or len(recommendations["actions"]) == 0:
+        raise ValueError("No recommendations generated")
+
+    return recommendations["actions"]
 
 
 if __name__ == "__main__":
