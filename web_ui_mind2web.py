@@ -2,6 +2,7 @@ import json
 from io import BytesIO
 from PIL import Image
 import random
+from langsmith import RunTree
 
 
 import numpy as np
@@ -12,6 +13,7 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 
 from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
+from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.utils import generate_short_id
 from ai_powered_qa.custom_plugins.planning_plugin import PlanningPlugin
 from ai_powered_qa.custom_plugins.playwright_plugin import PlaywrightPlugin
@@ -29,6 +31,9 @@ from ai_powered_qa.ui_common.load_history import _on_change_history_name
 st.write(
     """
     <style>
+        pre:has(code.language-html) {
+            max-height: 500px;
+        }
         iframe { 
             width: 1024px; 
             position: relative; 
@@ -90,7 +95,7 @@ st.write(annotation_item["action_reprs"])
 # )
 
 
-def on_commit(value):
+def on_commit(value: Interaction):
     st.session_state[USER_MESSAGE_CONTENT_KEY] = None
     del st.session_state[INTERACTION_INSTANCE_KEY]
     # Reset agent model after commit to save money
@@ -98,7 +103,37 @@ def on_commit(value):
     st.session_state[AGENT_MODEL_KEY] = AVAILABLE_MODELS[0]
     # Reset tool call back to 'auto' (not often you want the same tool call again)
     st.session_state[TOOL_CALL_KEY] = "auto"
-    agent.commit_interaction(interaction=value)
+
+    langsmith_trace = st.session_state["langsmith_trace"]
+    commited_interaction = langsmith_trace.create_child(
+        name="Committed Interaction",
+        run_type="llm",
+        inputs=value.request_params,
+    )
+    commited_interaction.end(
+        outputs={"choices": [{"message": value.agent_response.model_dump()}]}
+    )
+    commited_interaction.post()
+
+    if value.agent_response.tool_calls:
+        tool_calls = langsmith_trace.create_child(
+            name="Tool Calls",
+            run_type="tool",
+            inputs={"tool_calls": value.agent_response.tool_calls},
+        )
+    final_interaction = agent.commit_interaction(interaction=value)
+    if value.agent_response.tool_calls:
+        tool_calls.end(outputs={"tool_responses": final_interaction.tool_responses})
+        tool_calls.post()
+
+    langsmith_trace.end(
+        outputs={
+            "agent_response": final_interaction.agent_response,
+            "tool_responses": final_interaction.tool_responses,
+        },
+    )
+    langsmith_trace.post()
+    del st.session_state["langsmith_trace"]
 
 
 if not history_name:
@@ -113,10 +148,41 @@ def generate_interaction():
 
     tool_call = st.session_state[TOOL_CALL_KEY]
 
+    # TODO: add constant for langsmith_trace key
+    if "langsmith_trace" not in st.session_state:
+        st.session_state["langsmith_trace"] = RunTree(
+            name="Supervised Agent Interaction",
+            run_type="chain",
+            inputs={},
+        )
+
+    langsmith_trace = st.session_state["langsmith_trace"]
+
+    langsmith_trace.inputs = {
+        "agent": agent.model_dump(),
+        "user_message_content": user_message_content,
+        "tool_choice": tool_call,
+    }
+
+    child_llm_run = langsmith_trace.create_child(
+        name="ChatOpenAI",
+        run_type="llm",
+        inputs={},
+    )
+
     _interaction = agent.generate_interaction(
         user_message_content, tool_choice=tool_call
     )
+
+    child_llm_run.inputs = _interaction.request_params
+
+    child_llm_run.end(
+        outputs={"choices": [{"message": _interaction.agent_response.model_dump()}]}
+    )
+    child_llm_run.post()
+
     st.session_state[INTERACTION_INSTANCE_KEY] = _interaction
+
     agent_store.save_interaction(agent, _interaction)
 
 
@@ -206,8 +272,13 @@ with st.chat_message("user"):
         label_visibility="collapsed",
     )
 
+
+def clear_interaction():
+    del st.session_state[INTERACTION_INSTANCE_KEY]
+
+
 st.button(
-    "Regenerate interaction", use_container_width=True, on_click=generate_interaction
+    "Regenerate interaction", use_container_width=True, on_click=clear_interaction
 )
 # END Request params UI
 

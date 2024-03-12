@@ -5,6 +5,7 @@ import re
 from typing import Any
 from openai import OpenAI
 from pydantic import Field
+from langsmith import wrappers, traceable
 
 import playwright.async_api
 from playwright.async_api import TimeoutError
@@ -157,10 +158,14 @@ And here is a description of the page:
 """
 
 
+def get_openai_client():
+    return wrappers.wrap_openai(OpenAI())
+
+
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
 
-    client: Any = Field(default_factory=OpenAI, exclude=True)
+    client: Any = Field(default_factory=get_openai_client, exclude=True)
 
     _playwright: playwright.async_api.Playwright
     _browser: playwright.async_api.Browser
@@ -180,6 +185,7 @@ class PlaywrightPlugin(Plugin):
         return selector
 
     def get_elements_count_for_selector(self, selector: str):
+        selector = _selector_visible(selector)
         return self.run_async(self._get_elements_count_for_selector(selector))
 
     async def _get_elements_count_for_selector(self, selector: str):
@@ -209,6 +215,12 @@ class PlaywrightPlugin(Plugin):
 
     @property
     def context_message(self) -> str:
+        return self.get_context_message()
+
+    @traceable(
+        name="Context Message", tags=["PlawrightPlugin"], metadata={"version": "0.0.1"}
+    )
+    def get_context_message(self):
         html = self.run_async(self._get_page_content())
         self.screenshot()
         if html.startswith("No page loaded yet."):
@@ -221,8 +233,9 @@ class PlaywrightPlugin(Plugin):
             temperature=0,
             messages=[
                 {"role": "system", "content": describe_html_system_message},
-                {"role": "assistant", "content": html},
+                {"role": "user", "content": html},
             ],
+            langsmith_extra={"metadata": {"operation": "describe_html"}},
         )
         return context_template.format(
             html=html,
@@ -271,6 +284,8 @@ class PlaywrightPlugin(Plugin):
         timeout = 3_000
         page = await self.ensure_page()
         try:
+            selector = _selector_visible(selector)
+
             # Count the number of elements that match the selector
             element_count = await page.locator(selector).count()
 
@@ -330,46 +345,6 @@ class PlaywrightPlugin(Plugin):
         except Exception:
             return f"Unable to select option '{value}' on element '{selector}'."
         return f"Option '{value}' on element '{selector}' was successfully selected."
-
-    # @tool
-    # def assert_that(self, selector: str, action: str, value: str = None):
-    #     """
-    #     Perform an assertion on an element based on its text content.
-
-    #     :param str selector: Selector for the element identified by its text content.
-    #     :param str action: [
-    #               {
-    #                 "option": "is_visible",
-    #                 "description": "Check if the element is displayed in the content.",
-    #               },
-    #               {
-    #                 "option": "contain_text",
-    #                 "description": "Check if the element contains the specified text content.",
-    #               }
-    #             ]
-    #     :param str value: Text to comparing in action contain_text or None.
-    #     """
-    #     return self.run_async(self._assert_that(selector, action, value))
-
-    # async def _assert_that(self, selector: str, action: str, value: str = None):
-    #     page = await self.ensure_page()
-
-    #     if action == "is_visible":
-    #         state = await page.locator(selector).is_visible()
-    #         result_message = (
-    #             f"{selector} is {'visible' if state else 'not visible'} in context."
-    #         )
-    #     elif action == "contain_text":
-    #         text = await page.inner_text(selector)
-    #         if text == "":
-    #             text = await page.locator(selector).get_attribute("value")
-    #         result_message = (
-    #             f"{selector} {'contains' if value == text else 'does not contain'} '{value}', "
-    #             f"actual value: '{text}'."
-    #         )
-    #     else:
-    #         return "Not implemented action"
-    #     return f"Action '{action}' was successfully performed: {result_message}"
 
     @tool
     def scroll(self, selector: str, direction: str):
@@ -458,6 +433,7 @@ class PlaywrightPlugin(Plugin):
         self._buffer = await page.screenshot()
 
 
+@traceable(name="Clean HTML")
 def clean_html(html_content):
     """
     Cleans the web page HTML content from irrelevant tags and attributes
@@ -540,6 +516,6 @@ def _remove_useless_tags(soup: BeautifulSoup):
 
 
 def _selector_visible(selector: str) -> str:
-    if ":visible" not in selector:
-        return f"{selector}:visible"
+    if "[data-playwright-visible=true]" not in selector:
+        return f"{selector}[data-playwright-visible=true]"
     return selector

@@ -1,4 +1,5 @@
 import json
+import yaml
 from typing import Any
 
 from dotenv import load_dotenv
@@ -9,7 +10,6 @@ from ai_powered_qa.components.interaction import Interaction
 from ai_powered_qa.components.plugin import Plugin
 from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
 from .utils import generate_short_id, md5, count_tokens
-import yaml
 
 load_dotenv()
 
@@ -81,16 +81,17 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             "model": model,
             "temperature": 0,
             "messages": messages,
-            "tool_choice": (
-                tool_choice
-                if tool_choice in ["auto", "none"]
-                else {"type": "function", "function": {"name": tool_choice}}
-            ),
         }
 
         tools = self.get_tools_from_plugins()
         if len(tools) > 0:
             request_params["tools"] = tools
+            request_params["tool_choice"] = (
+                tool_choice
+                if tool_choice in ["auto", "none"]
+                else {"type": "function", "function": {"name": tool_choice}}
+            )
+
         completion = self.client.chat.completions.create(**request_params)
 
         return Interaction(
@@ -178,8 +179,6 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         messages.append({"role": "user", "content": context_message})
         if user_prompt:
             messages.append({"role": "user", "content": user_prompt})
-
-        print(messages[1])
 
         return messages
 

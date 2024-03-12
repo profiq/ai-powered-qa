@@ -10,6 +10,7 @@ from ai_powered_qa.ui_common.constants import (
 def _clear_interaction():
     st.session_state[USER_MESSAGE_CONTENT_KEY] = ""
     if INTERACTION_INSTANCE_KEY in st.session_state:
+        del st.session_state["langsmith_trace"]
         del st.session_state[INTERACTION_INSTANCE_KEY]
 
 
