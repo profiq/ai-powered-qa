@@ -121,12 +121,13 @@ class Plugin(BaseModel, ABC):
 
     def reset_history(self, history):
         for message in history:
-            if "tool_calls" in message:
-                for tool_call in message["tool_calls"]:
-                    self.call_tool(
-                        tool_call["function"]["name"],
-                        **json.loads(tool_call["function"]["arguments"]),
-                    )
+            if not "tool_calls" in message:
+                continue
+            for tool_call in message["tool_calls"]:
+                self.call_tool(
+                    tool_call["function"]["name"],
+                    **json.loads(tool_call["function"]["arguments"]),
+                )
 
 
 class RandomNumberPlugin(Plugin):
