@@ -1,9 +1,10 @@
 import json
+import yaml
 from typing import Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializeAsAny
 import yaml
 
 from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
@@ -31,7 +32,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     # Agent configuration
     system_message: str = Field(default="You are a helpful assistant.")
-    plugins: dict[str, Plugin] = Field(default_factory=dict)
+    plugins: dict[str, SerializeAsAny[Plugin]] = Field(default_factory=dict)
 
     # Agent state
     history_name: str = Field(default_factory=generate_short_id, exclude=True)
@@ -81,6 +82,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         )
         request_params = {
             "model": model,
+            "temperature": 0,
             "messages": messages,
             "temperature": TEMPERATURE_DEFAULT,
             "tool_choice": (
@@ -93,6 +95,12 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
         tools = self.get_tools_from_plugins()
         if len(tools) > 0:
             request_params["tools"] = tools
+            request_params["tool_choice"] = (
+                tool_choice
+                if tool_choice in ["auto", "none"]
+                else {"type": "function", "function": {"name": tool_choice}}
+            )
+
         completion = self.client.chat.completions.create(**request_params)
 
         return Interaction(
@@ -185,4 +193,4 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     def _generate_context_message(self):
         contexts = [p.context_message for p in self.plugins.values()]
-        return "=== CONTEXT MESSAGE ===\n\n".join(contexts)
+        return "=== CONTEXT_MESSAGE ===\n\n" + "\n\n".join(contexts)

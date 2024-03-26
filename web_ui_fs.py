@@ -1,17 +1,12 @@
 import json
+import os
 
 import streamlit as st
 
 from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
-from ai_powered_qa.custom_plugins.playwright_plugin.base import PlaywrightPlugin
-from ai_powered_qa.custom_plugins.playwright_plugin.html_paging import (
-    PlaywrightPluginHtmlPaging,
-)
-from ai_powered_qa.custom_plugins.playwright_plugin.only_visible import (
-    PlaywrightPluginOnlyVisible,
-)
-
+from ai_powered_qa.custom_plugins.file_system_plugin import FileSystemPlugin
+from ai_powered_qa.custom_plugins.planning_plugin import PlanningPlugin
 
 SYSTEM_MESSAGE_KEY = "agent_system_message"
 HISTORY_NAME_KEY = "history_name"
@@ -20,36 +15,28 @@ AGENT_MODEL_KEY = "agent_model"
 TOOL_CALL_KEY = "tool_call"
 
 
-NAME_TO_PLUGIN_CLASS = {
-    "PlaywrightPlugin": PlaywrightPlugin,
-    "PlaywrightPluginHtmlPaging": PlaywrightPluginHtmlPaging,
-    "PlaywrightPluginOnlyVisible": PlaywrightPluginOnlyVisible,
-}
-
-agent_store = AgentStore("agents", name_to_plugin_class=NAME_TO_PLUGIN_CLASS)
-
-
-st.write(
-    """
-    <style>
-        pre:has(code.language-html) {
-            max-height: 500px;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
+agent_store = AgentStore(
+    "agents",
+    name_to_plugin_class={
+        "FileSystemPlugin": FileSystemPlugin,
+        "PlanningPlugin": PlanningPlugin,
+    },
 )
 
 
 sidebar = st.sidebar
 
 
-def load_agent(playwright_plugin: str):
+def load_agent():
     _agent_name = st.session_state[AGENT_NAME_KEY]
     _agent = agent_store.load_agent(
         _agent_name,
         default_kwargs={
-            "plugins": {playwright_plugin: NAME_TO_PLUGIN_CLASS[playwright_plugin]()}
+            "plugins": {
+                "FileSystemPlugin": FileSystemPlugin(
+                    root_directory=os.path.join(os.getcwd(), "data")
+                )
+            }
         },
     )
     st.session_state["agent_instance"] = _agent
@@ -57,21 +44,12 @@ def load_agent(playwright_plugin: str):
     st.session_state[SYSTEM_MESSAGE_KEY] = _agent.system_message
 
 
-playwright_plugin_choice = sidebar.selectbox(
-    "Default playwright plugin", ["OnlyVisible", "HtmlPaging"]
-)
-default_playwright_plugin = f"PlaywrightPlugin{playwright_plugin_choice}"
-
 agent_name = sidebar.text_input(
-    "Agent name",
-    value="test_agent",
-    key=AGENT_NAME_KEY,
-    on_change=load_agent,
-    args=(default_playwright_plugin,),
+    "Agent name", value="fs_agent", key=AGENT_NAME_KEY, on_change=load_agent
 )
 
 if not "agent_instance" in st.session_state:
-    load_agent(default_playwright_plugin)
+    load_agent()
 
 agent = st.session_state["agent_instance"]
 
@@ -122,6 +100,14 @@ def load_history():
 
     history = agent_store.load_history(agent, history_name)
     agent.reset_history(history, history_name)
+
+
+def reload_agent():
+    load_agent()
+    load_history()
+
+
+sidebar.button("Reload agent", on_click=reload_agent)
 
 
 history_name = st.text_input(
@@ -193,12 +179,7 @@ context_message = (
 
 
 with st.chat_message("user"):
-    st.write("**Context message**")
     st.write(context_message["content"])
-    for plugin_name in agent.plugins:
-        if "PlaywrightPlugin" in plugin_name:
-            st.image(agent.plugins[plugin_name].buffer)
-            break
 
 agent_store.save_interaction(agent, interaction)
 
