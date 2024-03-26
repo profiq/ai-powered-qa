@@ -90,12 +90,12 @@ JS_FUNCTIONS = cleandoc(
     window.updateElementScrollability = updateElementScrollability;
 
     function setValueAsDataAttribute() {
-      const inputs = document.querySelectorAll('input, textarea, select');
+        const inputs = document.querySelectorAll('input, textarea, select');
 
-      inputs.forEach(input => {
-        const value = input.value;
-        input.setAttribute('data-playwright-value', value);
-      });
+        inputs.forEach(input => {
+            const value = input.value;
+            input.setAttribute('data-playwright-value', value);
+        });
     }
     window.setValueAsDataAttribute = setValueAsDataAttribute;
     """
@@ -149,27 +149,46 @@ class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
         return self._run_async(self._scroll(selector, direction))
 
     async def _scroll(self, selector: str, direction: str):
-        if not direction in ["up", "down"]:
-            return (
-                f"Unable to scroll in element '{selector}' "
-                f"as direction '{direction}' is not supported"
-            )
         page = await self._ensure_page()
         try:
+            # Get viewport dimensions
             window_height = await page.evaluate("window.innerHeight")
+            window_width = await page.evaluate("window.innerWidth")
+
+            # Get element's bounding box
             bounds = await page.locator(selector).bounding_box()
             if not bounds:
                 return f"Unable to scroll in element '{selector}' as it does not exist"
-            x = bounds["x"] + bounds["width"] / 2
-            y = bounds["y"] + bounds["height"] / 2
-            delta = min(bounds["height"], window_height) * 0.8
-            delta = delta if direction == "up" else -delta
+
+            # Calculate the visible part of the element within the viewport
+            visible_x = max(
+                0,
+                min(bounds["x"] + bounds["width"], window_width) - max(bounds["x"], 0),
+            )
+            visible_y = max(
+                0,
+                min(bounds["y"] + bounds["height"], window_height)
+                - max(bounds["y"], 0),
+            )
+
+            # Adjust x and y to be within the visible part of the viewport
+            x = max(bounds["x"], 0) + visible_x / 2
+            y = max(bounds["y"], 0) + visible_y / 2
+
+            # Calculate delta based on the visible part of the element
+            delta = min(visible_y, window_height) * 0.8
+
             await page.mouse.move(x=x, y=y)
-            await page.mouse.wheel(delta_y=delta, delta_x=0)
+            if direction == "up":
+                await page.mouse.wheel(delta_y=-delta, delta_x=0)
+            elif direction == "down":
+                await page.mouse.wheel(delta_y=delta, delta_x=0)
+            else:
+                return f"Unable to scroll in element '{selector}' as direction '{direction}' is not supported"
         except Exception as e:
             print(e)
             return f"Unable to scroll. {e}"
-        return f"Scrolling in {direction} direction was successfully performed."
+        return f"Scrolled successfully."
 
     @staticmethod
     def _clean_html(html: str) -> str:
@@ -184,3 +203,12 @@ class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
         html_clean = soup.prettify()
         html_clean = clean_html.remove_comments(html_clean)
         return html_clean
+
+    def _enhance_selector(self, selector):
+        return _selector_visible(selector)
+
+
+def _selector_visible(selector: str) -> str:
+    if "[data-playwright-visible=true]" not in selector:
+        return f"{selector}[data-playwright-visible=true]"
+    return selector

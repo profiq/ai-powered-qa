@@ -57,14 +57,18 @@ def load_agent(playwright_plugin: str):
     st.session_state[SYSTEM_MESSAGE_KEY] = _agent.system_message
 
 
-agent_name = sidebar.text_input(
-    "Agent name", value="test_agent", key=AGENT_NAME_KEY, on_change=load_agent
-)
-
 playwright_plugin_choice = sidebar.selectbox(
     "Default playwright plugin", ["OnlyVisible", "HtmlPaging"]
 )
 default_playwright_plugin = f"PlaywrightPlugin{playwright_plugin_choice}"
+
+agent_name = sidebar.text_input(
+    "Agent name",
+    value="test_agent",
+    key=AGENT_NAME_KEY,
+    on_change=load_agent,
+    args=(default_playwright_plugin,),
+)
 
 if not "agent_instance" in st.session_state:
     load_agent(default_playwright_plugin)
