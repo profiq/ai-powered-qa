@@ -2,8 +2,9 @@ from bs4 import BeautifulSoup
 import re
 
 
-def clean_attributes(soup: BeautifulSoup, classes: bool = True) -> str:
+def clean_attributes(soup: BeautifulSoup) -> str:
     allowed_attrs = [
+        "class",
         "id",
         "name",
         "value",
@@ -12,14 +13,11 @@ def clean_attributes(soup: BeautifulSoup, classes: bool = True) -> str:
         "data-testid",
         "data-playwright-scrollable",
         "data-playwright-value",
-        "href"
+        "href",
     ]
 
-    if not classes:
-        allowed_attrs.append("class")
-
     for element in soup.find_all(True):
-        element.attrs = element.attrs = {
+        element.attrs = {
             key: value for key, value in element.attrs.items() if key in allowed_attrs
         }
 

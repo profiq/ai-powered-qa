@@ -20,13 +20,11 @@ class PageNotLoadedException(Exception):
 
 DESCRIBE_HTML_SYSTEM_MESSAGE = cleandoc(
     """
-    You are an HTML interpreter assisting in web automation. Given HTML code of
-    a page, you should return a natural language description of how the page 
-    probably looks. 
+    You are an HTML interpreter assisting in web automation. Given HTML code of a page, you should return a natural language description of how the page probably looks.
     Be specific and exhaustive. 
     Mention all elements that can be interactive.
-    Describe the state of all form elements, the value of each input is 
-    provided as the `data-playwright-value` attribute.
+    Describe the state of all form elements, the value of each input is provided as the `data-playwright-value` attribute.
+    Mention all elements that are scrollable (these are marked with the `data-playwright-scrollable` attribute).
     """
 )
 
@@ -39,7 +37,49 @@ CONTEXT_TEMPLATE = cleandoc(
     ```
 
     And here is a description of the page:
+    ```text
     {description}
+    ```
+    """
+)
+
+GENERATE_SELECTOR_SCRIPT = cleandoc(
+    """
+    (([x, y]) => {
+        // Find the element at the given coordinates.
+        const element = document.elementFromPoint(x, y);
+        if (!element) return '';
+
+        let path = '';
+        for (let current = element; current && current !== document.body; current = current.parentElement) {
+            let selector = current.localName; // Always include the tag name.
+
+            // Include the ID if present.
+            if (current.id) {
+                selector += `#${current.id}`;
+            }
+
+            // Include class names if present.
+            if (current.className && typeof current.className === 'string') {
+                const classes = current.className.trim().split(/\s+/).join('.');
+                if (classes) {
+                    selector += `.${classes}`;
+                }
+            }
+
+            // Include data-test-id if present.
+            const testId = current.getAttribute('data-test-id');
+            if (testId) {
+                selector += `[data-test-id='${testId}']`;
+            }
+
+            // Prepend the current selector to the path with a ' > ' if path is not empty.
+            path = selector + (path ? ' > ' + path : '');
+        }
+
+        // Prepend 'body' tag to the path as the starting point.
+        return 'body' + (path ? ' > ' + path : '');
+    })
     """
 )
 
@@ -72,6 +112,7 @@ class PlaywrightPlugin(Plugin):
 
     @property
     def context_message(self) -> str:
+        self._run_async(self._screenshot())
         try:
             html = self._run_async(self._get_page_content())
         except PageNotLoadedException:
@@ -79,12 +120,28 @@ class PlaywrightPlugin(Plugin):
             description = "The browser is empty"
         else:
             description = self._get_html_description(html)
-        self._run_async(self._screenshot())
         return CONTEXT_TEMPLATE.format(html=html, description=description)
 
     @property
     def buffer(self) -> bytes:
         return bytes(self._buffer) if self._buffer else b""
+
+    def get_selector_for_coordinates(self, x, y):
+        return self.run_async(self._get_selector_from_coordinates(x, y))
+
+    async def _get_selector_from_coordinates(self, x, y):
+        page = await self.ensure_page()
+        selector = await page.evaluate(GENERATE_SELECTOR_SCRIPT, [x, y])
+        return selector
+
+    def get_elements_count_for_selector(self, selector: str):
+        selector = self._enhance_selector(selector)
+        return self.run_async(self._get_elements_count_for_selector(selector))
+
+    async def _get_elements_count_for_selector(self, selector: str):
+        page = await self.ensure_page()
+        count = await page.locator(selector).count()
+        return count
 
     @tool
     def navigate_to_url(self, url: str):
@@ -111,42 +168,59 @@ class PlaywrightPlugin(Plugin):
         """
         Click on an element with the given CSS selector.
 
-        :param str selector:
-            CSS selector for the element to click. Be as specific as possible
-            with the selector to ensure only one item is clicked.
+        :param str selector: CSS selector for the element to click. Be as specific as possible with the selector to ensure only one item is clicked.
         """
         return self._run_async(self._click_element(selector))
 
     async def _click_element(self, selector: str) -> str:
+        timeout = config.PLAYWRIGHT_TIMEOUT
         page = await self._ensure_page()
         try:
-            await page.locator(selector).first.click(timeout=config.PLAYWRIGHT_TIMEOUT)
+            selector = self._enhance_selector(selector)
+
+            # Count the number of elements that match the selector
+            element_count = await page.locator(selector).count()
+
+            # If no elements found
+            if element_count == 0:
+                raise Exception(f"No element found for selector: {selector}")
+
+            # If more than one element found
+            if element_count > 1:
+                raise Exception("Selector returned more than one element.")
+            await page.click(
+                selector=selector,
+                timeout=timeout,
+            )
+        except TimeoutError:
+            return f"Element did not become clickable within {timeout}ms. It might be obscured by another element."
         except Exception as e:
             print(e)
-            return f"Unable to click on element '{selector}'"
-        return f"Clicked element '{selector}'"
+            return f"Unable to click on element. {e}"
+
+        return f"Element clicked successfully."
 
     @tool
     def fill_element(self, selector: str, text: str):
         """
-        Text input on element in the current web page matching the given
-        Playwright selector.
+        Fill a text input element with a specific text
 
-        :param str selector: Selector for the element by text content.
-        :param str text: Text what you want to fill up.
+        :param str selector: Selector for the input element you want to fill in.
+        :param str text: Text you want to fill in.
         """
+
         return self._run_async(self._fill_element(selector, text))
 
     async def _fill_element(self, selector: str, text: str):
         page = await self._ensure_page()
         try:
-            await page.locator(selector).first.fill(
+            await page.locator(self._enhance_selector(selector)).fill(
                 text, timeout=config.PLAYWRIGHT_TIMEOUT
             )
         except Exception as e:
             print(e)
             return f"Unable to fill element. {e}"
-        return f"Text input on element {selector} was successfully performed."
+        return f"Text input was successfully performed."
 
     @tool
     def select_option(self, selector: str, value: str):
@@ -164,7 +238,7 @@ class PlaywrightPlugin(Plugin):
             await page.locator(selector).first.select_option(value)
         except Exception:
             return f"Unable to select option '{value}' on element '{selector}'."
-        return f"Option '{value}' on element '{selector}' was successfully selected."
+        return f"Option '{value}' was successfully selected."
 
     @tool
     def press_enter(self):
@@ -278,7 +352,7 @@ class PlaywrightPlugin(Plugin):
             temperature=config.TEMPERATURE_DEFAULT,
             messages=[
                 {"role": "system", "content": DESCRIBE_HTML_SYSTEM_MESSAGE},
-                {"role": "assistant", "content": html},
+                {"role": "user", "content": html},
             ],
         )
         return completion.choices[0].message.content
@@ -298,3 +372,6 @@ class PlaywrightPlugin(Plugin):
     def _run_async(self, coroutine):
         asyncio.set_event_loop(self._loop)
         return self._loop.run_until_complete(coroutine)
+
+    def _enhance_selector(self, selector):
+        return selector
