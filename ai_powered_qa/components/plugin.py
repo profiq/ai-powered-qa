@@ -21,6 +21,10 @@ def tool(method):
     return method
 
 
+def predicate_for_tools(attr):
+    return inspect.ismethod(attr) and hasattr(attr, "__tool__")
+
+
 class Plugin(BaseModel, ABC):
     name: str
 
@@ -62,9 +66,21 @@ class Plugin(BaseModel, ABC):
         return self._callable_tools[tool_name](**kwargs)
 
     def _register_tools(self):
-        for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
-            if hasattr(method, "__tool__"):
-                docstring = inspect.getdoc(method).strip()
+        # Deny-list of member names to skip
+        deny_list = ["context_message", "system_message", "tools"]
+
+        # Iterate through all member names
+        for member_name in dir(self):
+            # Skip any members in the deny-list
+            if member_name in deny_list:
+                continue
+
+            # Fetch the member without executing it (if it's a property)
+            member = getattr(self, member_name, None)
+
+            # Apply your existing predicate to decide if we should process this member
+            if predicate_for_tools(member):
+                docstring = inspect.getdoc(member).strip()
                 if docstring.startswith("{"):
                     tool_description = json.loads(docstring)
                 else:
@@ -72,19 +88,19 @@ class Plugin(BaseModel, ABC):
                     tool_description = {
                         "type": "function",
                         "function": {
-                            "name": f"{name}",
+                            "name": f"{member_name}",
                             "description": docstring_parsed.short_description,
                             "parameters": {
                                 "type": "object",
                                 "properties": self._build_param_object(
                                     docstring_parsed.params
                                 ),
-                                "required": self._get_required_params(method),
+                                "required": self._get_required_params(member),
                             },
                         },
                     }
                 self._tools.append(tool_description)
-                self._callable_tools[tool_description["function"]["name"]] = method
+                self._callable_tools[tool_description["function"]["name"]] = member
 
     def _build_param_object(self, params):
         param_object = {}

@@ -1,32 +1,23 @@
+from io import BytesIO
 import json
+from PIL import Image
 
+
+import numpy as np
+from openai.types.chat.chat_completion_message import ChatCompletionMessageToolCall
 import streamlit as st
+from streamlit_image_coordinates import streamlit_image_coordinates
 
-from ai_powered_qa.components.agent_store import AgentStore
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
-from ai_powered_qa.custom_plugins.playwright_plugin.base import PlaywrightPlugin
-from ai_powered_qa.custom_plugins.playwright_plugin.html_paging import (
-    PlaywrightPluginHtmlPaging,
+from ai_powered_qa.components.utils import generate_short_id
+from ai_powered_qa.ui_common.constants import (
+    AGENT_MODEL_KEY,
+    INTERACTION_INSTANCE_KEY,
+    TOOL_CALL_KEY,
+    USER_MESSAGE_CONTENT_KEY,
 )
-from ai_powered_qa.custom_plugins.playwright_plugin.only_visible import (
-    PlaywrightPluginOnlyVisible,
-)
-
-
-SYSTEM_MESSAGE_KEY = "agent_system_message"
-HISTORY_NAME_KEY = "history_name"
-AGENT_NAME_KEY = "agent_name"
-AGENT_MODEL_KEY = "agent_model"
-TOOL_CALL_KEY = "tool_call"
-
-
-NAME_TO_PLUGIN_CLASS = {
-    "PlaywrightPlugin": PlaywrightPlugin,
-    "PlaywrightPluginHtmlPaging": PlaywrightPluginHtmlPaging,
-    "PlaywrightPluginOnlyVisible": PlaywrightPluginOnlyVisible,
-}
-
-agent_store = AgentStore("agents", name_to_plugin_class=NAME_TO_PLUGIN_CLASS)
+from ai_powered_qa.ui_common.load_agent import NAME_TO_PLUGIN_CLASS, load_agent
+from ai_powered_qa.ui_common.load_history import load_history
 
 
 st.write(
@@ -35,113 +26,98 @@ st.write(
         pre:has(code.language-html) {
             max-height: 500px;
         }
+        iframe { 
+            width: 1024px; 
+            position: relative; 
+            left: 50%; 
+            transform: translateX(-50%); 
+        }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-
-sidebar = st.sidebar
-
-
-def load_agent(playwright_plugin: str):
-    _agent_name = st.session_state[AGENT_NAME_KEY]
-    _agent = agent_store.load_agent(
-        _agent_name,
-        default_kwargs={
-            "plugins": {playwright_plugin: NAME_TO_PLUGIN_CLASS[playwright_plugin]()}
-        },
-    )
-    st.session_state["agent_instance"] = _agent
-    st.session_state[AGENT_MODEL_KEY] = _agent.model
-    st.session_state[SYSTEM_MESSAGE_KEY] = _agent.system_message
-
-
-playwright_plugin_choice = sidebar.selectbox(
+playwright_plugin_choice = st.sidebar.selectbox(
     "Default playwright plugin", ["OnlyVisible", "HtmlPaging"]
 )
 default_playwright_plugin = f"PlaywrightPlugin{playwright_plugin_choice}"
 
-agent_name = sidebar.text_input(
-    "Agent name",
-    value="test_agent",
-    key=AGENT_NAME_KEY,
-    on_change=load_agent,
-    args=(default_playwright_plugin,),
+agent, agent_store = load_agent(
+    default_kwargs={
+        "plugins": {
+            default_playwright_plugin: NAME_TO_PLUGIN_CLASS[default_playwright_plugin]()
+        }
+    }
 )
 
-if not "agent_instance" in st.session_state:
-    load_agent(default_playwright_plugin)
+history_name = load_history(agent, agent_store)
 
-agent = st.session_state["agent_instance"]
+if not history_name:
+    st.stop()
 
 
-def on_commit(interaction):
-    # Clear the user message content
-    st.session_state["user_message_content"] = None
-    # Use the agent message content that could be modified by the user
-    interaction.agent_response.content = st.session_state["agent_message_content"]
-    # and clear it from state
-    st.session_state["agent_message_content"] = None
-
-    # Use the tool calls that could be modified by the user and clear them from state
-    if interaction.agent_response.tool_calls:
-        for tool_call in interaction.agent_response.tool_calls:
-            tool_call.function.name = st.session_state[f"{tool_call.id}_name"]
-            del st.session_state[f"{tool_call.id}_name"]
-            tool_call.function.arguments = st.session_state[f"{tool_call.id}_arguments"]
-            del st.session_state[f"{tool_call.id}_arguments"]
-
-    agent_store.save_interaction(
-        agent, agent.commit_interaction(interaction=interaction)
-    )
-    agent_store.save_history(agent)
-
+def on_commit(value):
+    st.session_state[USER_MESSAGE_CONTENT_KEY] = None
+    del st.session_state[INTERACTION_INSTANCE_KEY]
     # Reset agent model after commit to save money
     #  (you need to explicitly request the more expensive models)
     st.session_state[AGENT_MODEL_KEY] = AVAILABLE_MODELS[0]
     # Reset tool call back to 'auto' (not often you want the same tool call again)
     st.session_state[TOOL_CALL_KEY] = "auto"
 
-
-agent.model = sidebar.selectbox("Model", AVAILABLE_MODELS, key=AGENT_MODEL_KEY)
-agent.system_message = sidebar.text_area("System message", key=SYSTEM_MESSAGE_KEY)
-generate_empty = sidebar.checkbox(
-    "Generate interaction even if user message is empty", False
-)
-agent_store.save_agent(agent)
-
-
-def load_history():
-    if HISTORY_NAME_KEY not in st.session_state:
-        return
-
-    history_name = st.session_state[HISTORY_NAME_KEY]
-    if not history_name:
-        return
-
-    history = agent_store.load_history(agent, history_name)
-    agent.reset_history(history, history_name)
-
-
-history_name = st.text_input(
-    "History name", key=HISTORY_NAME_KEY, on_change=load_history
-)
-
-if not history_name:
-    st.stop()
-
-
-def on_clear_history():
-    history_name = st.session_state[HISTORY_NAME_KEY]
-    agent.reset_history([], history_name)
+    # Save the committed interaction
+    agent_store.save_interaction(
+        agent, agent.commit_interaction(interaction=interaction)
+    )
+    # Save the history after the interaction was committed
     agent_store.save_history(agent)
 
 
-if len(agent.history) > 0:
-    st.button("Clear history", on_click=on_clear_history)
+available_tools = agent.get_tools_from_plugins()
+available_tool_names = [tool["function"]["name"] for tool in available_tools]
 
-for message in agent.history:
+
+def generate_interaction():
+    user_message_content = st.session_state[USER_MESSAGE_CONTENT_KEY]
+
+    tool_call = st.session_state[TOOL_CALL_KEY]
+
+    _interaction = agent.generate_interaction(
+        user_message_content, tool_choice=tool_call
+    )
+    st.session_state[INTERACTION_INSTANCE_KEY] = _interaction
+    agent_store.save_interaction(agent, _interaction)
+
+
+# Set default values for the tool call and user message content
+if TOOL_CALL_KEY not in st.session_state:
+    st.session_state[TOOL_CALL_KEY] = "auto"
+if USER_MESSAGE_CONTENT_KEY not in st.session_state:
+    st.session_state[USER_MESSAGE_CONTENT_KEY] = ""
+
+# Generate interaction if not in session state
+if INTERACTION_INSTANCE_KEY not in st.session_state:
+    try:
+        generate_interaction()
+    except Exception as e:
+        st.write(e)
+        st.stop()
+
+interaction = st.session_state[INTERACTION_INSTANCE_KEY]
+
+interaction_messages = len(interaction.request_params["messages"])
+
+agent_messages = agent.history
+
+# Context message is not committed to history
+uncommitted_messages_count = 1
+
+if interaction.user_prompt:
+    uncommitted_messages_count += 1
+
+for i, message in enumerate(agent_messages):
+    if i == len(agent_messages) - interaction_messages + uncommitted_messages_count + 1:
+        st.text("*Interaction messages*")
     with st.chat_message(message["role"]):
         if message["content"]:
             st.write(message["content"])
@@ -151,40 +127,7 @@ for message in agent.history:
                     st.write(json.loads(tool_call["function"]["arguments"]))
 
 
-last_message = None
-if agent.history:
-    last_message = agent.history[-1]
-
-user_message_content = None
-
-available_tools = agent.get_tools_from_plugins()
-available_tool_names = [tool["function"]["name"] for tool in available_tools]
-
-tool_call = st.selectbox(
-    "Tool call",
-    ["auto", "none"] + available_tool_names,
-    key=TOOL_CALL_KEY,
-)
-
-# User message
-if last_message is None or last_message["role"] == "assistant":
-    with st.chat_message("user"):
-        user_message_content = st.text_area(
-            "User message content",
-            key="user_message_content",
-            label_visibility="collapsed",
-        )
-        if not user_message_content and not generate_empty:
-            st.stop()
-
-try:
-    interaction = agent.generate_interaction(
-        user_message_content, tool_choice=tool_call
-    )
-except Exception as e:
-    st.write(e)
-    st.stop()
-
+# TODO: test flipping the order of user_prompt vs context_message
 context_message = (
     interaction.request_params["messages"][-2]
     if interaction.user_prompt
@@ -193,18 +136,56 @@ context_message = (
 
 
 with st.chat_message("user"):
-    st.write("**Cotext message**")
+    st.write("**Context message**")
     st.write(context_message["content"])
-    for plugin_name in agent.plugins:
-        if "PlaywrightPlugin" in plugin_name:
-            st.image(agent.plugins[plugin_name].buffer)
-            break
 
-agent_store.save_interaction(agent, interaction)
+playwright_plugin_name = next(
+    key for key in agent.plugins.keys() if key.startswith("PlaywrightPlugin")
+)
+playwright_plugin = agent.plugins.get(playwright_plugin_name)
+buffer = playwright_plugin.buffer
+image = Image.open(BytesIO(buffer))
+image_array = np.array(image)
+width = 1024
+coordinates = streamlit_image_coordinates(image_array, width=width)
+if coordinates:
+    # multiply the coordinates by the ratio of the actual width to the displayed width as integer
+    ratio = image.width / width
+    coordinates = {k: int(v * ratio) for k, v in coordinates.items()}
+    selector = playwright_plugin.get_selector_for_coordinates(**coordinates)
+    st.write(f"X: {coordinates['x']}, Y: {coordinates['y']}")
+    st.session_state["selector_for_coordinates"] = selector
+    st.text_input(
+        "Selector for coordinates", key="selector_for_coordinates", disabled=True
+    )
+    selector = st.text_area("Selector", value=selector, key="selector")
+    elements_count = playwright_plugin.get_elements_count_for_selector(selector)
+    st.write(f"Element count: {elements_count}")
+
+# Request params UI (will regenerate the interaction)
+# TODO: automatically re-generate if this changes (against the current interaction)
+tool_call = st.selectbox(
+    "Tool call",
+    ["auto", "none"] + available_tool_names,
+    key=TOOL_CALL_KEY,
+)
+
+# TODO: Make this a chat input ?
+with st.chat_message("user"):
+    user_message_content = st.text_area(
+        "User message content",
+        key=USER_MESSAGE_CONTENT_KEY,
+        label_visibility="collapsed",
+    )
+
+st.button(
+    "Regenerate interaction", use_container_width=True, on_click=generate_interaction
+)
+# END Request params UI
 
 agent_response = interaction.agent_response.model_dump()
 
-st.session_state["agent_message_content"] = agent_response["content"]
+# TODO: get rid of the model_dump and iterate the actual response when building the UI
 tool_calls = (
     {
         tool_call["id"]: tool_call["function"]
@@ -213,24 +194,100 @@ tool_calls = (
     if agent_response["tool_calls"]
     else {}
 )
-st.session_state["agent_tool_calls"] = tool_calls
-for tool_id, tool_info in tool_calls.items():
-    st.session_state[f"{tool_id}_name"] = tool_info["name"]
-    st.session_state[f"{tool_id}_arguments"] = tool_info["arguments"]
+
+tools = agent.get_tools_from_plugins()
+
+tool_schemas = (
+    {tool["function"]["name"]: tool["function"]["parameters"] for tool in tools}
+    if tools
+    else {}
+)
 
 with st.chat_message("assistant"):
-    with st.form("agent_message"):
-        st.text_area(
-            "Content",
-            key="agent_message_content",
-        )
-        for tool_id, tool_info in tool_calls.items():
-            st.text_input(
-                f"{tool_info['name']} arguments",
-                key=f"{tool_id}_arguments",
+
+    def update_agent_message_content():
+        interaction.agent_response.content = st.session_state["agent_message_content"]
+
+    st.session_state["agent_message_content"] = interaction.agent_response.content
+    st.text_area(
+        "Content",
+        key="agent_message_content",
+        on_change=update_agent_message_content,
+    )
+
+    def update_tool_call(tool_id, param_name):
+        param_value = st.session_state[f"{tool_id}_{param_name}"]
+        for tool_call in interaction.agent_response.tool_calls:
+            if tool_call.id == tool_id:
+                try:
+                    original_arguments = json.loads(tool_call.function.arguments)
+                except:
+                    original_arguments = {}
+                original_arguments[param_name] = param_value
+                tool_call.function.arguments = json.dumps(original_arguments)
+
+    for tool_id, tool_info in tool_calls.items():
+        tool_name = tool_info["name"]
+        st.write(f"**{tool_name}** (id: {tool_id})")
+
+        tool_schema = tool_schemas[tool_name]
+
+        assert tool_schema["type"] == "object"
+
+        try:
+            arguments = json.loads(tool_info["arguments"])
+        except:
+            arguments = {}
+
+        for param_name, param_schema in tool_schema["properties"].items():
+            st.session_state[f"{tool_id}_{param_name}"] = arguments.get(
+                param_name, param_schema.get("default", "")
             )
-        st.form_submit_button(
-            "Commit agent completion",
-            on_click=on_commit,
-            args=(interaction,),
+            st.text_area(
+                param_name,
+                key=f"{tool_id}_{param_name}",
+                on_change=update_tool_call,
+                args=(tool_id, param_name),
+            )
+
+        # TODO: move definitions to the top of the page
+        def remove_tool_call():
+            interaction.agent_response.tool_calls = [
+                tool_call
+                for tool_call in interaction.agent_response.tool_calls
+                if tool_call.id != tool_id
+            ]
+
+        st.button("Remove", on_click=remove_tool_call, key=f"{tool_id}_remove")
+
+    with st.form("new_tool_call"):
+
+        def add_tool_call():
+            tool_call_id = f"call_{generate_short_id()}"
+            tool_call = st.session_state["new_tool_call"]
+            if not interaction.agent_response.tool_calls:
+                interaction.agent_response.tool_calls = []
+            interaction.agent_response.tool_calls.append(
+                ChatCompletionMessageToolCall(
+                    **{
+                        "id": tool_call_id,
+                        "function": {
+                            "name": tool_call,
+                            "arguments": "",
+                        },
+                        "type": "function",
+                    }
+                )
+            )
+
+        st.selectbox(
+            "Add tool call",
+            available_tool_names,
+            key="new_tool_call",
         )
+        st.form_submit_button(
+            "Add",
+            on_click=add_tool_call,
+        )
+
+    st.button("Commit", on_click=on_commit, args=(interaction,))

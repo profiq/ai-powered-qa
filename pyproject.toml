@@ -16,6 +16,7 @@ openai = "^1.2.3"
 tiktoken = "^0.5.1"
 black = "^23.11.0"
 docstring-parser = "^0.15"
+streamlit-image-coordinates = "^0.1.6"
 
 
 [tool.poetry.group.dev.dependencies]
