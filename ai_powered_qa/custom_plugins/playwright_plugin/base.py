@@ -127,19 +127,19 @@ class PlaywrightPlugin(Plugin):
         return bytes(self._buffer) if self._buffer else b""
 
     def get_selector_for_coordinates(self, x, y):
-        return self.run_async(self._get_selector_from_coordinates(x, y))
+        return self._run_async(self._get_selector_from_coordinates(x, y))
 
     async def _get_selector_from_coordinates(self, x, y):
-        page = await self.ensure_page()
+        page = await self._ensure_page()
         selector = await page.evaluate(GENERATE_SELECTOR_SCRIPT, [x, y])
         return selector
 
     def get_elements_count_for_selector(self, selector: str):
         selector = self._enhance_selector(selector)
-        return self.run_async(self._get_elements_count_for_selector(selector))
+        return self._run_async(self._get_elements_count_for_selector(selector))
 
     async def _get_elements_count_for_selector(self, selector: str):
-        page = await self.ensure_page()
+        page = await self._ensure_page()
         count = await page.locator(selector).count()
         return count
 
