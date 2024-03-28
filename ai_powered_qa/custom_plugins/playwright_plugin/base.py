@@ -25,6 +25,7 @@ DESCRIBE_HTML_SYSTEM_MESSAGE = cleandoc(
     Mention all elements that can be interactive.
     Describe the state of all form elements, the value of each input is provided as the `data-playwright-value` attribute.
     Mention all elements that are scrollable (these are marked with the `data-playwright-scrollable` attribute).
+    Explicitly mention the element with focus (marked with the `data-playwright-focused` attribute).
     """
 )
 

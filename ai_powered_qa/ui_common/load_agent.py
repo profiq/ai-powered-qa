@@ -9,6 +9,9 @@ from ai_powered_qa.custom_plugins.playwright_plugin.html_paging import (
 from ai_powered_qa.custom_plugins.playwright_plugin.only_visible import (
     PlaywrightPluginOnlyVisible,
 )
+from ai_powered_qa.custom_plugins.playwright_plugin.only_keyboard import (
+    PlaywrightPluginOnlyKeyboard,
+)
 from ai_powered_qa.ui_common.constants import (
     AGENT_INSTANCE_KEY,
     AGENT_MODEL_KEY,
@@ -23,6 +26,7 @@ NAME_TO_PLUGIN_CLASS = {
     "PlaywrightPlugin": PlaywrightPlugin,
     "PlaywrightPluginHtmlPaging": PlaywrightPluginHtmlPaging,
     "PlaywrightPluginOnlyVisible": PlaywrightPluginOnlyVisible,
+    "PlaywrightPluginOnlyKeyboard": PlaywrightPluginOnlyKeyboard,
 }
 
 

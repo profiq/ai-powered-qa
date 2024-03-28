@@ -38,7 +38,7 @@ st.write(
 )
 
 playwright_plugin_choice = st.sidebar.selectbox(
-    "Default playwright plugin", ["OnlyVisible", "HtmlPaging"]
+    "Default playwright plugin", ["OnlyVisible", "OnlyKeyboard", "HtmlPaging"]
 )
 default_playwright_plugin = f"PlaywrightPlugin{playwright_plugin_choice}"
 
@@ -240,15 +240,29 @@ with st.chat_message("assistant"):
             arguments = {}
 
         for param_name, param_schema in tool_schema["properties"].items():
+            if (
+                param_name not in arguments
+                and param_name not in tool_schema["required"]
+            ):
+                continue
+
             st.session_state[f"{tool_id}_{param_name}"] = arguments.get(
                 param_name, param_schema.get("default", "")
             )
-            st.text_area(
-                param_name,
-                key=f"{tool_id}_{param_name}",
-                on_change=update_tool_call,
-                args=(tool_id, param_name),
-            )
+            if param_schema["type"] == "string":
+                st.text_area(
+                    param_name,
+                    key=f"{tool_id}_{param_name}",
+                    on_change=update_tool_call,
+                    args=(tool_id, param_name),
+                )
+            if param_schema["type"] == "integer":
+                st.number_input(
+                    param_name,
+                    key=f"{tool_id}_{param_name}",
+                    on_change=update_tool_call,
+                    args=(tool_id, param_name),
+                )
 
         # TODO: move definitions to the top of the page
         def remove_tool_call():

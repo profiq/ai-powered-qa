@@ -13,6 +13,7 @@ def clean_attributes(soup: BeautifulSoup) -> str:
         "data-testid",
         "data-playwright-scrollable",
         "data-playwright-value",
+        "data-playwright-focused",
         "href",
     ]
 
