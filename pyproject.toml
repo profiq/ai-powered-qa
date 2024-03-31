@@ -17,6 +17,7 @@ tiktoken = "^0.5.1"
 black = "^23.11.0"
 docstring-parser = "^0.15"
 streamlit-image-coordinates = "^0.1.6"
+gradio = "^4.24.0"
 
 
 [tool.poetry.group.dev.dependencies]

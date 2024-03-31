@@ -38,6 +38,14 @@ class AgentStore:
         )
         return latest_version
 
+    def create_agent(self, agent_name: str, default_kwargs: dict = {}):
+        version = self._find_latest_version(agent_name) + 1
+        if version is None:
+            version = 0
+        agent = Agent(agent_name=agent_name, version=version, **default_kwargs)
+        self.save_agent(agent)
+        return agent
+
     def load_agent(
         self, agent_name: str, version: int = None, default_kwargs: dict = {}
     ) -> Agent:
