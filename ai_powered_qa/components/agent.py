@@ -83,16 +83,16 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             "model": model,
             "messages": messages,
             "temperature": TEMPERATURE_DEFAULT,
-            "tool_choice": (
-                tool_choice
-                if tool_choice in ["auto", "none"]
-                else {"type": "function", "function": {"name": tool_choice}}
-            ),
         }
 
         tools = self.get_tools_from_plugins()
         if len(tools) > 0:
             request_params["tools"] = tools
+            request_params["tool_choice"] = (
+                tool_choice
+                if tool_choice in ["auto", "none"]
+                else {"type": "function", "function": {"name": tool_choice}}
+            )
         completion = self.client.chat.completions.create(**request_params)
 
         return Interaction(
