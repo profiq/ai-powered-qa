@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from inspect import cleandoc
 import json
 from typing import Any
@@ -7,6 +8,7 @@ from bs4 import BeautifulSoup
 from openai import OpenAI
 import playwright.async_api
 from pydantic import Field
+from langsmith import wrappers, traceable
 
 from ai_powered_qa import config
 from ai_powered_qa.components.plugin import Plugin, tool
@@ -21,11 +23,24 @@ class PageNotLoadedException(Exception):
 DESCRIBE_HTML_SYSTEM_MESSAGE = cleandoc(
     """
     You are an HTML interpreter assisting in web automation. Given HTML code of a page, you should return a natural language description of how the page probably looks.
-    Be specific and exhaustive. 
+    Be specific and exhaustive.
+    Describe the page as if you were describing it to a blind person.
     Mention all elements that can be interactive.
     Describe the state of all form elements, the value of each input is provided as the `data-playwright-value` attribute.
     Mention all elements that are scrollable (these are marked with the `data-playwright-scrollable` attribute).
     Explicitly mention the element with focus (marked with the `data-playwright-focused` attribute).
+    """
+)
+
+DESCRIBE_SCREENSHOT_SYSTEM_MESSAGE = cleandoc(
+    """
+    You are a visual interpreter assisting in web automation. Given a screenshot of a page, you should return a natural language description of how the page probably looks.
+    Be specific and exhaustive.
+    Describe the page as if you were describing it to a blind person.
+    Mention all elements that can be interactive.
+    Describe the state of all form elements.
+    Mention all elements that are scrollable.
+    Explicitly mention the element with focus.
     """
 )
 
@@ -85,9 +100,13 @@ GENERATE_SELECTOR_SCRIPT = cleandoc(
 )
 
 
+def get_openai_client():
+    return wrappers.wrap_openai(OpenAI())
+
+
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
-    client: Any = Field(default_factory=OpenAI, exclude=True)
+    client: Any = Field(default_factory=get_openai_client, exclude=True)
 
     _playwright: playwright.async_api.Playwright | None
     _browser: playwright.async_api.Browser | None
@@ -113,6 +132,10 @@ class PlaywrightPlugin(Plugin):
 
     @property
     def context_message(self) -> str:
+        return self.get_context_message()
+
+    @traceable(run_type="chain", name="get_context_message", tags=["PlaywrightPlugin"])
+    def get_context_message(self):
         self._run_async(self._screenshot())
         try:
             html = self._run_async(self._get_page_content())
@@ -120,7 +143,13 @@ class PlaywrightPlugin(Plugin):
             html = "No page loaded yet."
             description = "The browser is empty"
         else:
-            description = self._get_html_description(html)
+            description = self._get_html_description(
+                html, langsmith_extra={"metadata": {"url": self._page.url}}
+            )
+            screenshot_description = self._get_screenshot_description(
+                langsmith_extra={"metadata": {"url": self._page.url}}
+            )
+            print(screenshot_description)
         return CONTEXT_TEMPLATE.format(html=html, description=description)
 
     @property
@@ -331,10 +360,13 @@ class PlaywrightPlugin(Plugin):
         if page.url == "about:blank":
             raise PageNotLoadedException("No page loaded yet.")
         html = await page.content()
-        html_clean = self._clean_html(html)
+        html_clean = self._clean_html(
+            html, langsmith_extra={"metadata": {"url": page.url}}
+        )
         return html_clean
 
     @staticmethod
+    @traceable(run_type="chain", name="clean_html", tags=["PlaywrightPlugin"])
     def _clean_html(html: str) -> str:
         """
         Cleans the web page HTML content from irrelevant tags and attributes
@@ -347,6 +379,7 @@ class PlaywrightPlugin(Plugin):
         html_clean = clean_html.remove_comments(html_clean)
         return html_clean
 
+    @traceable(run_type="chain", name="get_html_description", tags=["PlaywrightPlugin"])
     def _get_html_description(self, html):
         completion = self.client.chat.completions.create(
             model=config.MODEL_DEFAULT,
@@ -355,6 +388,33 @@ class PlaywrightPlugin(Plugin):
                 {"role": "system", "content": DESCRIBE_HTML_SYSTEM_MESSAGE},
                 {"role": "user", "content": html},
             ],
+            langsmith_extra={"metadata": {"operation": "describe_html"}},
+        )
+        return completion.choices[0].message.content
+
+    @traceable(
+        run_type="chain", name="get_screenshot_description", tags=["PlaywrightPlugin"]
+    )
+    def _get_screenshot_description(self):
+        base64_screenshot = base64.b64encode(self._buffer).decode("utf-8")
+        completion = self.client.chat.completions.create(
+            model="gpt-4-vision-preview",
+            temperature=config.TEMPERATURE_DEFAULT,
+            messages=[
+                {"role": "system", "content": "Describe the screenshot"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{base64_screenshot}",
+                            },
+                        },
+                    ],
+                },
+            ],
+            langsmith_extra={"metadata": {"operation": "describe_screenshot"}},
         )
         return completion.choices[0].message.content
 

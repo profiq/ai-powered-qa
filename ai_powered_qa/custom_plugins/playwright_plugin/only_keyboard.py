@@ -145,7 +145,13 @@ class PlaywrightPluginOnlyKeyboard(PlaywrightPlugin):
         except PageNotLoadedException:
             description = "The browser is empty"
         else:
-            description = self._get_html_description(html)
+            # TODO: reuse from base class
+            description = self._get_html_description(
+                html, langsmith_extra={"metadata": {"url": self._page.url}}
+            )
+            screenshot_description = self._get_screenshot_description(
+                langsmith_extra={"metadata": {"url": self._page.url}}
+            )
         return CONTEXT_TEMPLATE.format(description=description)
 
     @property

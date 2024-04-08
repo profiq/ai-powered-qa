@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel, Field
 import yaml
+from langsmith import wrappers, traceable
 
 from ai_powered_qa.components.constants import MODEL_TOKEN_LIMITS
 from ai_powered_qa.components.interaction import Interaction
@@ -19,6 +20,10 @@ load_dotenv()
 AVAILABLE_MODELS = ["gpt-3.5-turbo-1106", "gpt-4-1106-preview"]
 
 
+def get_openai_client():
+    return wrappers.wrap_openai(OpenAI())
+
+
 class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     # Agent identifiers
     agent_name: str
@@ -26,7 +31,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     hash: str = ""
 
     # OpenAI API
-    client: Any = Field(default_factory=OpenAI, exclude=True)
+    client: Any = Field(default_factory=get_openai_client, exclude=True)
     model: str = Field(default="gpt-3.5-turbo-1106")
 
     # Agent configuration
@@ -67,6 +72,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             tools.extend(p.tools)
         return tools
 
+    @traceable(run_type="chain", name="generate_interaction", tags=["Agent"])
     def generate_interaction(
         self,
         user_prompt: str = None,
@@ -101,6 +107,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
             agent_response=completion.choices[0].message,
         )
 
+    @traceable(run_type="chain", name="commit_interaction", tags=["Agent"])
     def commit_interaction(self, interaction: Interaction) -> Interaction:
         interaction.committed = True
         user_prompt = interaction.user_prompt

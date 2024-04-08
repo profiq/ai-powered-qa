@@ -3,7 +3,11 @@ import json
 import numpy as np
 from io import BytesIO
 from PIL import Image
+from uuid import uuid4
+import base64
 
+
+from langsmith import Client
 from openai.types.chat.chat_completion_message import ChatCompletionMessageToolCall
 
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
@@ -19,6 +23,7 @@ from ai_powered_qa.custom_plugins.playwright_plugin.only_visible import (
 from ai_powered_qa.custom_plugins.playwright_plugin.only_keyboard import (
     PlaywrightPluginOnlyKeyboard,
 )
+
 
 NAME_TO_PLUGIN_CLASS = {
     "PlaywrightPlugin": PlaywrightPlugin,
@@ -41,6 +46,7 @@ DEFAULT_AGENT_NAME = "default_agent"
 # MARK: UI
 with gr.Blocks() as demo:
     gr_agent_state = gr.State()
+    gr_langsmith_run_id = gr.State()
     gr_interaction_state = gr.State()
     gr_editing_tool_index = gr.State()
     with gr.Accordion("Agent Config", open=False):
@@ -151,15 +157,23 @@ with gr.Blocks() as demo:
             gr_browser,
             gr_messages,
             gr_tool_choice,
+            gr_langsmith_run_id,
         ]
         + [item for tpl in gr_tool_uis for item in tpl],
     )
     def regenerate_interaction(agent, user_message, tool_choice):
         if agent is None:
             return {}
+
+        run_id = uuid4()
+
         interaction = agent.generate_interaction(
             user_prompt=user_message,
             tool_choice=tool_choice,
+            langsmith_extra={
+                "run_id": run_id,
+                "metadata": {"agent": agent.model_dump(exclude_unset=True)},
+            },
         )
 
         # Update browser view
@@ -197,6 +211,7 @@ with gr.Blocks() as demo:
             gr_browser: image_array,
             gr_messages: interaction_messages,
             gr_tool_choice: gr.Dropdown(choices=tool_names),
+            gr_langsmith_run_id: run_id,
             **interaction_tool_calls,
         }
 
@@ -255,6 +270,7 @@ with gr.Blocks() as demo:
             gr_browser,
             gr_messages,
             gr_tool_choice,
+            gr_langsmith_run_id,
         ]
         + [item for tpl in gr_tool_uis for item in tpl],
     )
@@ -281,6 +297,7 @@ with gr.Blocks() as demo:
             gr_browser,
             gr_messages,
             gr_tool_choice,
+            gr_langsmith_run_id,
         ]
         + [item for tpl in gr_tool_uis for item in tpl],
     )
@@ -591,6 +608,7 @@ with gr.Blocks() as demo:
             gr_browser,
             gr_messages,
             gr_tool_choice,
+            gr_langsmith_run_id,
         ]
         + [item for tpl in gr_tool_uis for item in tpl],
     )
