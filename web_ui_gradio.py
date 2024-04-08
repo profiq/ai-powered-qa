@@ -38,11 +38,12 @@ DEFAULT_AGENT_KWARGS = {
 
 DEFAULT_AGENT_NAME = "default_agent"
 
+# MARK: UI
 with gr.Blocks() as demo:
     gr_agent_state = gr.State()
     gr_interaction_state = gr.State()
     gr_editing_tool_index = gr.State()
-    with gr.Accordion("Agent Config"):
+    with gr.Accordion("Agent Config", open=False):
         # Loading agent
         with gr.Group():
             gr_agent_name = gr.Textbox(label="Agent name", value=DEFAULT_AGENT_NAME)
@@ -51,12 +52,16 @@ with gr.Blocks() as demo:
         gr_agent_config_label = gr.Markdown("# Agent Config", visible=False)
         with gr.Group(visible=False) as gr_agent_config:
             gr_system_message = gr.Textbox(label="System Message")
-            gr_default_model = gr.Dropdown(label="Model", choices=AVAILABLE_MODELS)
+            gr_default_model = gr.Dropdown(
+                label="Model", choices=AVAILABLE_MODELS, interactive=True
+            )
             gr_update_agent_btn = gr.Button("Update Agent")
-    with gr.Accordion("Interaction", open=False) as gr_interaction_tab:
+    with gr.Accordion("Load History", open=False):
         # Loading history
         with gr.Group():
             gr_history_name = gr.Textbox(label="History name")
+            gr_new_history_btn = gr.Button("New History")
+    with gr.Accordion("Interaction", open=False) as gr_interaction_tab:
         # Interaction config
         with gr.Row():
             with gr.Column(scale=2):
@@ -70,7 +75,9 @@ with gr.Blocks() as demo:
         gr_regenerate_interaction_btn = gr.Button("Regenerate Interaction")
         # Agent response
         with gr.Column():
-            gr_agent_response_content = gr.Textbox(label="Agent Response Content")
+            gr_agent_response_content = gr.Textbox(
+                label="Agent Response Content", interactive=True
+            )
         # Tool Calls
         gr_tool_uis = []
         for _ in range(10):
@@ -83,6 +90,9 @@ with gr.Blocks() as demo:
                         gr.Button("Delete", visible=False),
                     )
                 )
+
+        gr_commit_interaction_btn = gr.Button("Commit Interaction")
+
         # Tool call add/edit form
         with gr.Accordion("Add Tool Call", open=False) as gr_tool_call_form:
             gr_tool_call_type = gr.Dropdown(
@@ -104,11 +114,13 @@ with gr.Blocks() as demo:
 
             gr_tool_call_submit = gr.Button("Add Tool Call")
 
-    # UI helpers
+    # MARK: UI helpers
     def update_tool_call_uis(interaction, gr_tool_uis):
         interaction_tool_calls = {}
         for index, (gr_row, gr_markdown, gr_edit, gr_delete) in enumerate(gr_tool_uis):
-            if index < len(interaction.agent_response.tool_calls):
+            if interaction.agent_response.tool_calls and index < len(
+                interaction.agent_response.tool_calls
+            ):
                 tool_call = interaction.agent_response.tool_calls[index]
                 interaction_tool_calls[gr_row] = gr.Row(visible=True)
                 interaction_tool_calls[gr_edit] = gr.Button(visible=True)
@@ -124,35 +136,12 @@ with gr.Blocks() as demo:
                 interaction_tool_calls[gr_markdown] = gr.Markdown(visible=False)
         return interaction_tool_calls
 
-    # Event listeners
-    @gr.on(
-        triggers=[demo.load, gr_agent_name.submit, gr_load_agent_btn.click],
-        inputs=[gr_agent_name],
-        outputs=[
-            gr_agent_state,
-            gr_agent_config_label,
-            gr_agent_config,
-            gr_system_message,
-            gr_default_model,
-            gr_interaction_tab,
-            gr_history_name,
-        ],
-    )
-    def load_agent(agent_name):
-        loaded_agent = agent_store.load_agent(
-            agent_name=agent_name,
-            default_kwargs=DEFAULT_AGENT_KWARGS,
-        )
-        return {
-            gr_agent_state: loaded_agent,
-            gr_agent_config_label: gr.Markdown(visible=True),
-            gr_agent_config: gr.Group(visible=True),
-            gr_system_message: gr.Textbox(value=loaded_agent.system_message),
-            gr_default_model: gr.Dropdown(value=loaded_agent.model),
-            gr_interaction_tab: gr.Accordion(open=True),
-            gr_history_name: gr.Textbox(value=loaded_agent.history_name),
-        }
-
+    # MARK: Event listeners
+    #
+    #
+    #
+    #
+    # MARK: regenerate_interaction
     @gr.on(
         triggers=[gr_regenerate_interaction_btn.click],
         inputs=[gr_agent_state, gr_user_message, gr_tool_choice],
@@ -161,6 +150,7 @@ with gr.Blocks() as demo:
             gr_agent_response_content,
             gr_browser,
             gr_messages,
+            gr_tool_choice,
         ]
         + [item for tpl in gr_tool_uis for item in tpl],
     )
@@ -184,22 +174,118 @@ with gr.Blocks() as demo:
         # Update history
         interaction_messages = []
         for message in interaction.request_params["messages"]:
+            message_text = f"{message['content']}\n" if message["content"] else ""
+            if "tool_calls" in message:
+                message_text += "\n\nTool Calls:\n"
+                for tool_call in message["tool_calls"]:
+                    message_text += f"{tool_call['function']['name']}: {tool_call['function']['arguments']}\n"
             if message["role"] == "user" or message["role"] == "system":
                 interaction_messages.append([message["content"], None])
             else:
-                interaction_messages.append([None, message["content"]])
+                interaction_messages.append([None, message_text])
 
         # Update tool call elements
         interaction_tool_calls = update_tool_call_uis(interaction, gr_tool_uis)
+
+        # Update gr_tool_choice options
+        tools = agent.get_tools_from_plugins()
+        tool_names = ["auto", "none"] + [tool["function"]["name"] for tool in tools]
 
         return {
             gr_interaction_state: interaction,
             gr_agent_response_content: interaction.agent_response.content,
             gr_browser: image_array,
             gr_messages: interaction_messages,
+            gr_tool_choice: gr.Dropdown(choices=tool_names),
             **interaction_tool_calls,
         }
 
+    # MARK: update_agent
+    @gr.on(
+        triggers=[gr_update_agent_btn.click],
+        inputs=[gr_agent_state, gr_system_message, gr_default_model],
+        outputs=[gr_agent_state],
+    )
+    def update_agent(agent, system_message, model):
+        if agent:
+            agent.system_message = system_message
+            agent.model = model
+            agent_store.save_agent(agent)
+        return {
+            gr_agent_state: agent,
+        }
+
+    # MARK: load_agent
+    def load_agent(agent_name, agent):
+        if agent:
+            agent.reset_history([], agent.history_name)
+        loaded_agent = agent_store.load_agent(
+            agent_name=agent_name,
+            default_kwargs=DEFAULT_AGENT_KWARGS,
+        )
+        return {
+            gr_agent_state: loaded_agent,
+            gr_agent_config_label: gr.Markdown(visible=True),
+            gr_agent_config: gr.Group(visible=True),
+            gr_system_message: gr.Textbox(value=loaded_agent.system_message),
+            gr_default_model: gr.Dropdown(value=loaded_agent.model),
+            gr_interaction_tab: gr.Accordion(open=True),
+            gr_history_name: gr.Textbox(value=loaded_agent.history_name),
+        }
+
+    gr.on(
+        triggers=[demo.load, gr_agent_name.submit, gr_load_agent_btn.click],
+        fn=load_agent,
+        inputs=[gr_agent_name, gr_agent_state],
+        outputs=[
+            gr_agent_state,
+            gr_agent_config_label,
+            gr_agent_config,
+            gr_system_message,
+            gr_default_model,
+            gr_interaction_tab,
+            gr_history_name,
+        ],
+    ).then(
+        fn=regenerate_interaction,
+        inputs=[gr_agent_state, gr_user_message, gr_tool_choice],
+        outputs=[
+            gr_interaction_state,
+            gr_agent_response_content,
+            gr_browser,
+            gr_messages,
+            gr_tool_choice,
+        ]
+        + [item for tpl in gr_tool_uis for item in tpl],
+    )
+
+    # MARK: new_history
+    def new_history(agent):
+        agent.reset_history([])
+        return {
+            gr_agent_state: agent,
+            gr_history_name: gr.Textbox(value=agent.history_name),
+        }
+
+    gr.on(
+        triggers=[gr_new_history_btn.click],
+        fn=new_history,
+        inputs=[gr_agent_state],
+        outputs=[gr_agent_state, gr_history_name],
+    ).then(
+        fn=regenerate_interaction,
+        inputs=[gr_agent_state, gr_user_message, gr_tool_choice],
+        outputs=[
+            gr_interaction_state,
+            gr_agent_response_content,
+            gr_browser,
+            gr_messages,
+            gr_tool_choice,
+        ]
+        + [item for tpl in gr_tool_uis for item in tpl],
+    )
+
+    # MARK: update_tool_call_form
     @gr.on(
         triggers=[gr_tool_call_type.input],
         inputs=[gr_tool_call_type],
@@ -237,6 +323,7 @@ with gr.Blocks() as demo:
                 gr_tool_call_form: gr.Accordion(open=True),
             }
 
+    # MARK: submit_tool_call
     @gr.on(
         triggers=[gr_tool_call_submit.click],
         inputs=[
@@ -337,6 +424,7 @@ with gr.Blocks() as demo:
             **interaction_tool_calls,
         }
 
+    # MARK: delete_tool_call
     @gr.on(
         triggers=[gr_delete.click for _, _, _, gr_delete in gr_tool_uis],
         inputs=[gr_interaction_state],
@@ -371,6 +459,7 @@ with gr.Blocks() as demo:
             **interaction_tool_calls,
         }
 
+    # MARK: edit_tool_call
     @gr.on(
         triggers=[gr_edit.click for _, _, gr_edit, _ in gr_tool_uis],
         inputs=[gr_interaction_state],
@@ -460,6 +549,51 @@ with gr.Blocks() as demo:
             **output_components,
             **interaction_tool_calls,
         }
+
+    # MARK: commit_interaction
+    def commit_interaction(agent, interaction, user_message, agent_response_content):
+        if interaction is None:
+            return {
+                gr_interaction_state: interaction,
+            }
+        interaction.user_prompt = user_message if user_message else None
+        interaction.agent_response.content = (
+            agent_response_content if agent_response_content else None
+        )
+
+        # Save the committed interaction
+        agent_store.save_interaction(
+            agent, agent.commit_interaction(interaction=interaction)
+        )
+        # Save the history after the interaction was committed
+        agent_store.save_history(agent)
+        return {
+            gr_interaction_state: interaction,
+            gr_user_message: "",
+        }
+
+    gr.on(
+        triggers=[gr_commit_interaction_btn.click],
+        fn=commit_interaction,
+        inputs=[
+            gr_agent_state,
+            gr_interaction_state,
+            gr_user_message,
+            gr_agent_response_content,
+        ],
+        outputs=[gr_agent_state, gr_interaction_state, gr_user_message],
+    ).then(
+        fn=regenerate_interaction,
+        inputs=[gr_agent_state, gr_user_message, gr_tool_choice],
+        outputs=[
+            gr_interaction_state,
+            gr_agent_response_content,
+            gr_browser,
+            gr_messages,
+            gr_tool_choice,
+        ]
+        + [item for tpl in gr_tool_uis for item in tpl],
+    )
 
 
 if __name__ == "__main__":
