@@ -4,10 +4,9 @@ import numpy as np
 from io import BytesIO
 from PIL import Image
 from uuid import uuid4
-import base64
+import random
 
 
-from langsmith import Client
 from openai.types.chat.chat_completion_message import ChatCompletionMessageToolCall
 
 from ai_powered_qa.components.agent import AVAILABLE_MODELS
@@ -23,6 +22,19 @@ from ai_powered_qa.custom_plugins.playwright_plugin.only_visible import (
 from ai_powered_qa.custom_plugins.playwright_plugin.only_keyboard import (
     PlaywrightPluginOnlyKeyboard,
 )
+
+
+def get_min2web_data():
+    with open("data/train_0.json", "r") as file:
+        data = json.load(file)
+        blocked_websites = ["instacart"]
+        filtered_data = [
+            item for item in data if item["website"] not in blocked_websites
+        ]
+    return filtered_data
+
+
+mind2web_data = get_min2web_data()
 
 
 NAME_TO_PLUGIN_CLASS = {
@@ -41,12 +53,13 @@ DEFAULT_AGENT_KWARGS = {
     "plugins": {"PlaywrightPluginOnlyVisible": {"name": "PlaywrightPluginOnlyVisible"}}
 }
 
-DEFAULT_AGENT_NAME = "default_agent"
+DEFAULT_AGENT_NAME = "only_keyboard"
 
 # MARK: UI
 with gr.Blocks() as demo:
     gr_agent_state = gr.State()
     gr_langsmith_run_id = gr.State()
+    gr_langsmith_session_id = gr.State()
     gr_interaction_state = gr.State()
     gr_editing_tool_index = gr.State()
     with gr.Accordion("Agent Config", open=False):
@@ -150,7 +163,12 @@ with gr.Blocks() as demo:
     # MARK: regenerate_interaction
     @gr.on(
         triggers=[gr_regenerate_interaction_btn.click],
-        inputs=[gr_agent_state, gr_user_message, gr_tool_choice],
+        inputs=[
+            gr_agent_state,
+            gr_user_message,
+            gr_tool_choice,
+            gr_langsmith_session_id,
+        ],
         outputs=[
             gr_interaction_state,
             gr_agent_response_content,
@@ -161,7 +179,7 @@ with gr.Blocks() as demo:
         ]
         + [item for tpl in gr_tool_uis for item in tpl],
     )
-    def regenerate_interaction(agent, user_message, tool_choice):
+    def regenerate_interaction(agent, user_message, tool_choice, session_id):
         if agent is None:
             return {}
 
@@ -172,7 +190,10 @@ with gr.Blocks() as demo:
             tool_choice=tool_choice,
             langsmith_extra={
                 "run_id": run_id,
-                "metadata": {"agent": agent.model_dump(exclude_unset=True)},
+                "metadata": {
+                    "agent": agent.model_dump(exclude_unset=True),
+                    "session_id": session_id,
+                },
             },
         )
 
@@ -263,7 +284,12 @@ with gr.Blocks() as demo:
         ],
     ).then(
         fn=regenerate_interaction,
-        inputs=[gr_agent_state, gr_user_message, gr_tool_choice],
+        inputs=[
+            gr_agent_state,
+            gr_user_message,
+            gr_tool_choice,
+            gr_langsmith_session_id,
+        ],
         outputs=[
             gr_interaction_state,
             gr_agent_response_content,
@@ -277,20 +303,38 @@ with gr.Blocks() as demo:
 
     # MARK: new_history
     def new_history(agent):
-        agent.reset_history([])
+        item = random.choice(mind2web_data)
+        history_name = item["annotation_id"]
+        website = item["website"] + ".com"
+        task = item["confirmed_task"]
+        user_message = f"Website: {website}\nTask: {task}"
+        agent.reset_history([], history_name)
+        session_id = str(uuid4())
         return {
             gr_agent_state: agent,
-            gr_history_name: gr.Textbox(value=agent.history_name),
+            gr_history_name: agent.history_name,
+            gr_user_message: user_message,
+            gr_langsmith_session_id: session_id,
         }
 
     gr.on(
         triggers=[gr_new_history_btn.click],
         fn=new_history,
         inputs=[gr_agent_state],
-        outputs=[gr_agent_state, gr_history_name],
+        outputs=[
+            gr_agent_state,
+            gr_history_name,
+            gr_user_message,
+            gr_langsmith_session_id,
+        ],
     ).then(
         fn=regenerate_interaction,
-        inputs=[gr_agent_state, gr_user_message, gr_tool_choice],
+        inputs=[
+            gr_agent_state,
+            gr_user_message,
+            gr_tool_choice,
+            gr_langsmith_session_id,
+        ],
         outputs=[
             gr_interaction_state,
             gr_agent_response_content,
@@ -568,7 +612,9 @@ with gr.Blocks() as demo:
         }
 
     # MARK: commit_interaction
-    def commit_interaction(agent, interaction, user_message, agent_response_content):
+    def commit_interaction(
+        agent, interaction, user_message, agent_response_content, run_id, session_id
+    ):
         if interaction is None:
             return {
                 gr_interaction_state: interaction,
@@ -580,7 +626,17 @@ with gr.Blocks() as demo:
 
         # Save the committed interaction
         agent_store.save_interaction(
-            agent, agent.commit_interaction(interaction=interaction)
+            agent,
+            agent.commit_interaction(
+                interaction=interaction,
+                langsmith_extra={
+                    "run_id": run_id,
+                    "metadata": {
+                        "agent": agent.model_dump(exclude_unset=True),
+                        "session_id": session_id,
+                    },
+                },
+            ),
         )
         # Save the history after the interaction was committed
         agent_store.save_history(agent)
@@ -597,11 +653,18 @@ with gr.Blocks() as demo:
             gr_interaction_state,
             gr_user_message,
             gr_agent_response_content,
+            gr_langsmith_run_id,
+            gr_langsmith_session_id,
         ],
         outputs=[gr_agent_state, gr_interaction_state, gr_user_message],
     ).then(
         fn=regenerate_interaction,
-        inputs=[gr_agent_state, gr_user_message, gr_tool_choice],
+        inputs=[
+            gr_agent_state,
+            gr_user_message,
+            gr_tool_choice,
+            gr_langsmith_session_id,
+        ],
         outputs=[
             gr_interaction_state,
             gr_agent_response_content,

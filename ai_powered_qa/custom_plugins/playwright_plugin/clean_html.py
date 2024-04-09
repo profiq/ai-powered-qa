@@ -39,6 +39,9 @@ def remove_useless_tags(soup: BeautifulSoup):
 def remove_invisible(soup: BeautifulSoup):
     to_keep = set()
     visible_elements = soup.find_all(attrs={"data-playwright-visible": True})
+    focused_element = soup.find(attrs={"data-playwright-focused": True})
+    if focused_element:
+        visible_elements.append(focused_element)
     for element in visible_elements:
         current = element
         while current is not None:
