@@ -7,8 +7,8 @@ import openai
 
 prompt_basis = (
     "Here is the HTML diff between two websites (what was added to the "
-    "second website)Can you tell me whether they are functionally "
-    "similar? (yes/no): \n\n"
+    "second website) Can you tell me whether they are functionally "
+    "similar? Answer with yes or no: \n\n"
 )
 
 html_cache = {}
@@ -33,28 +33,23 @@ def main():
             diff = difflib.unified_diff(html1, html2, lineterm="")
             diff = "\n".join(d[1:].strip() for d in diff if d.startswith("+"))
             record = {
-                "prompt": prompt_basis
-                + "Website URL 1: "
-                + website1
-                + "\nWebsite URL 2: "
-                + website2
-                + "\n\nDiff:\n\n"
-                + diff[:4800]
-                + "\n\nAnswer: ",
-                "completion": similarity,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt_basis
+                        + "Website URL 1: "
+                        + website1
+                        + "\nWebsite URL 2: "
+                        + website2
+                        + "\n\nDiff:\n\n"
+                        + "------------- DIFF ------------\n\n"
+                        + diff[:4800]
+                        + "\n\n------------- DIFF END ------------",
+                    },
+                    {"role": "assistant", "content": similarity},
+                ],
             }
-            #print(json.dumps(record))
-            response = client.completions.create(
-                model="ft:babbage-002:profiq:htmldiff:90Un4ZTL",
-                prompt=record["prompt"],
-                max_tokens=10,
-                temperature=0.0,
-            )
-            print(response.choices[0].text)
-            response = "yes" if "yes" in response.choices[0].text.lower() else "no"
-            print(response, record["completion"])
-            responses.append(1 if response == record["completion"] else 0)
-            print("Success rate:", sum(responses) / len(responses))
+            print(json.dumps(record))
 
     playwright.stop()
 
@@ -66,7 +61,7 @@ def get_html(page: Page, url: str) -> str:
         soup = bs4.BeautifulSoup(html, "html.parser")
         clean_html.clean_attributes(soup)
         clean_html.remove_useless_tags(soup)
-        html_cache[url] = soup.get_text()
+        html_cache[url] = soup.prettify()
     return html_cache[url]
 
 

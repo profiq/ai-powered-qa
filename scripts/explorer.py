@@ -97,8 +97,9 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
 
         Describe each main section (for example main menu, search, footer, filters) 
         of the subpage. The description of each section should list interactive 
-        elements, such as links, buttons or forms. It should also explain the specific purpose of
-        the page and its content. When describing the content, think about
+        elements, such as links, buttons or forms, as well as important status or error messages.
+        It should also explain the specific 
+        purpose of the page and its content. When describing the content, think about
         the specific subpage you are visiting instead the whole web portal.
         
         Each element should be represented by a separate record:
@@ -110,6 +111,7 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
         A link to the user's favorite ads
         A link to the user's ads
         A link to the form for adding a new ad
+        A status message saying 'No ads found'
 
         On the other hand, avoid being too specific, describe the purpose of the element 
         instead of its specific content.
@@ -159,7 +161,7 @@ def describe_html(client: OpenAI, plugin: PlaywrightPluginHtmlPaging) -> dict:
                                         "properties": {
                                             "type": {
                                                 "type": "string",
-                                                "description": "Type of the interactive element. E.g. 'link', 'button'",
+                                                "description": "Type of the interactive element. E.g. 'link', 'button', 'status message'",
                                             },
                                             "description": {
                                                 "type": "string",
