@@ -27,7 +27,12 @@ from ai_powered_qa.custom_plugins.playwright_plugin.only_keyboard import (
 def get_min2web_data():
     with open("data/train_0.json", "r") as file:
         data = json.load(file)
-        blocked_websites = ["instacart"]
+        blocked_websites = [
+            "instacart",  # prevents robots
+            "seatgeek",  # prevents robots
+            "ultimate-guitar",  # poorly accessible
+            "tesla",  # poorly accessible, has a lot of svg
+        ]
         filtered_data = [
             item for item in data if item["website"] not in blocked_websites
         ]
@@ -59,7 +64,7 @@ DEFAULT_AGENT_NAME = "only_keyboard"
 with gr.Blocks() as demo:
     gr_agent_state = gr.State()
     gr_langsmith_run_id = gr.State()
-    gr_langsmith_session_id = gr.State()
+    gr_langsmith_session_id = gr.State(str(uuid4()))
     gr_interaction_state = gr.State()
     gr_editing_tool_index = gr.State()
     with gr.Accordion("Agent Config", open=False):
@@ -82,12 +87,15 @@ with gr.Blocks() as demo:
             gr_new_history_btn = gr.Button("New History")
     with gr.Accordion("Interaction", open=False) as gr_interaction_tab:
         # Interaction config
-        with gr.Row():
+        with gr.Row(equal_height=True):
             with gr.Column(scale=2):
-                gr_browser = gr.Image()
+                gr_browser = gr.Image(height=500)
             with gr.Column(scale=1):
-                gr_messages = gr.Chatbot()
+                gr_messages = gr.Chatbot(height=500)
+        with gr.Row(equal_height=True):
+            with gr.Column(scale=2):
                 gr_user_message = gr.Textbox(label="User Message")
+            with gr.Column(scale=1):
                 gr_tool_choice = gr.Dropdown(
                     label="Tool Choice", choices=["auto", "none"], value="auto"
                 )
@@ -573,7 +581,12 @@ with gr.Blocks() as demo:
                         value=tool_call_arguments["key"], visible=True
                     ),
                     gr_press_key_count: gr.Number(
-                        value=tool_call_arguments["count"], visible=True
+                        value=(
+                            tool_call_arguments["count"]
+                            if "count" in tool_call_arguments
+                            else 1
+                        ),
+                        visible=True,
                     ),
                     gr_input_text_text: gr.Text(visible=False),
                 }

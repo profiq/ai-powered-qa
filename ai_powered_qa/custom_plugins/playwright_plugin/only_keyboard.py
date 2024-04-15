@@ -137,21 +137,7 @@ class PlaywrightPluginOnlyKeyboard(PlaywrightPlugin):
             """
         )
 
-    @property
-    def context_message(self) -> str:
-        self._run_async(self._screenshot())
-        try:
-            html = self._run_async(self._get_page_content())
-        except PageNotLoadedException:
-            description = "The browser is empty"
-        else:
-            # TODO: reuse from base class
-            description = self._get_html_description(
-                html, langsmith_extra={"metadata": {"url": self._page.url}}
-            )
-            screenshot_description = self._get_screenshot_description(
-                langsmith_extra={"metadata": {"url": self._page.url}}
-            )
+    def _format_context_message(self, html, description):
         return CONTEXT_TEMPLATE.format(description=description)
 
     @property

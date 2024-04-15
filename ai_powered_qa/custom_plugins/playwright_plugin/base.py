@@ -4,6 +4,7 @@ from inspect import cleandoc
 import json
 from typing import Any
 
+from anthropic import Anthropic
 from bs4 import BeautifulSoup
 from openai import OpenAI
 import playwright.async_api
@@ -19,6 +20,22 @@ from . import clean_html
 class PageNotLoadedException(Exception):
     pass
 
+
+ANTHROPIC_SYSTEM_MESSAGE = cleandoc(
+    """
+    You are helping describe HTML pages to a blind person.
+    You first mention which element is currently focused (marked with the `data-playwright-focused` attribute).
+    You then lists the sections that are on the page, and their contents.
+    If the section contains the focused element, it should be explicitly mentioned.
+    The section with the focused element should have the most detailed description, including the text contents.
+    Other sections should have just a summary of their contents, with attention to elements that can be interactive.
+    All form elements contained in a section are mentioned, providing their value (marked with `data-playwright-value`.
+    The HTML only shows elements that are visible on the page.
+    Sections or elements that are scrollable should be pointed out, as they can have more content, that is not shown in the HTML. These are marked with the `data-playwright-scrollable` attribute.
+    Do NOT mention any of the data attributes in your description!
+    Do NOT mention any HTML syntax in your description!
+    """
+)
 
 DESCRIBE_HTML_SYSTEM_MESSAGE = cleandoc(
     """
@@ -104,9 +121,14 @@ def get_openai_client():
     return wrappers.wrap_openai(OpenAI())
 
 
+def get_anthropic_client():
+    return Anthropic()
+
+
 class PlaywrightPlugin(Plugin):
     name: str = "PlaywrightPlugin"
     client: Any = Field(default_factory=get_openai_client, exclude=True)
+    anthropic_client: Any = Field(default_factory=get_anthropic_client, exclude=True)
 
     _playwright: playwright.async_api.Playwright | None
     _browser: playwright.async_api.Browser | None
@@ -143,13 +165,18 @@ class PlaywrightPlugin(Plugin):
             html = "No page loaded yet."
             description = "The browser is empty"
         else:
-            description = self._get_html_description(
-                html, langsmith_extra={"metadata": {"url": self._page.url}}
-            )
-            screenshot_description = self._get_screenshot_description(
-                langsmith_extra={"metadata": {"url": self._page.url}}
-            )
-            print(screenshot_description)
+            anthropic_description = self._get_anthropic_description(html)
+            # description = self._get_html_description(
+            #     html, langsmith_extra={"metadata": {"url": self._page.url}}
+            # )
+            # screenshot_description = self._get_screenshot_description(
+            #     langsmith_extra={"metadata": {"url": self._page.url}}
+            # )
+            # print(screenshot_description)
+            description = anthropic_description
+        return self._format_context_message(html, description)
+
+    def _format_context_message(self, html, description):
         return CONTEXT_TEMPLATE.format(html=html, description=description)
 
     @property
@@ -379,6 +406,17 @@ class PlaywrightPlugin(Plugin):
         html_clean = clean_html.remove_comments(html_clean)
         return html_clean
 
+    def _get_anthropic_description(self, html):
+        response = self.anthropic_client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=2048,
+            system=ANTHROPIC_SYSTEM_MESSAGE,
+            messages=[
+                {"role": "user", "content": html},
+            ],
+        )
+        return response.content[0].text
+
     @traceable(run_type="chain", name="get_html_description", tags=["PlaywrightPlugin"])
     def _get_html_description(self, html):
         completion = self.client.chat.completions.create(
@@ -428,6 +466,8 @@ class PlaywrightPlugin(Plugin):
 
     async def _screenshot(self):
         page = await self._ensure_page()
+        # locator().screenshot() waits for visibility and stability
+        await page.locator("body").screenshot()
         self._buffer = await page.screenshot()
 
     def _run_async(self, coroutine):
