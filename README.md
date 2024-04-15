@@ -25,15 +25,36 @@ $ poetry run playwright install
 
 ## Usage
 
+### Environment variables
+
+You will need at least an [OpenAI API](https://platform.openai.com) key.
+You should put it in a `.env` file like this:
+
+```shell
+OPENAI_API_KEY="<YOUR_OPENAI_API_KEY>"
+```
+
+You can use `.env.example` as a template if you want to use additional features, like [Anthropic](https://www.anthropic.com/) models, or [LangSmith](https://www.langchain.com/langsmith) tracing.
+
 ### Running the QA agent
 
-We are developing a UI for the QA agent based on [Steamlit](https://streamlit.io/). You start this UI like this:
+We have a couple example usages of the agent.
+One is a [Streamlit](https://streamlit.io/) interface, currently defaulting to an agent that sees a visible portion of the HTML, and can interact with it using selectors.
+You can run it like this:
 
 ```bash
 $ poetry run streamlit run web_ui_next.py
 ```
 
 This command should automatically open a new browser tab with an interface with a layout similar to ChatGPT.
+
+The streamlit UI is a bit un-intuitive when the interaction and app state get more complex, so we've also created another UI for the agent using [Gradio](https://gradio.app). This one currently defaults to an accessibility agent, that uses only keyboard, and you can run it using
+
+```bash
+$ poetry run gradio run web_ui_gradio.py
+```
+
+Both interfaces are work in progress and are continually evolving. Please submit an issue if you have any problems or ideas for improvements.
 
 ### Creating a new agent in Python
 
@@ -61,5 +82,3 @@ agent.commit_interaction(interaction)
 All plugins have to inherit from the `ai_powered_qa.components.plugin.Plugin` class. We recommend
 checking out some existing plugins in the `ai_powered_qa/custom_plugins` directory and our
 [blog article](https://www.profiq.com/from-chatgpt-to-smart-agents-the-next-frontier-in-app-integration).
-
-

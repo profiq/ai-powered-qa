@@ -165,15 +165,15 @@ class PlaywrightPlugin(Plugin):
             html = "No page loaded yet."
             description = "The browser is empty"
         else:
-            anthropic_description = self._get_anthropic_description(html)
-            # description = self._get_html_description(
-            #     html, langsmith_extra={"metadata": {"url": self._page.url}}
-            # )
+            # anthropic_description = self._get_anthropic_description(html)
+            # description = anthropic_description
+            description = self._get_html_description(
+                html, langsmith_extra={"metadata": {"url": self._page.url}}
+            )
             # screenshot_description = self._get_screenshot_description(
             #     langsmith_extra={"metadata": {"url": self._page.url}}
             # )
             # print(screenshot_description)
-            description = anthropic_description
         return self._format_context_message(html, description)
 
     def _format_context_message(self, html, description):
