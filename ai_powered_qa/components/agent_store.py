@@ -48,7 +48,19 @@ class AgentStore:
         file_path = os.path.join(self._directory, agent_name, file_name)
 
         if not os.path.exists(file_path):
-            return Agent(agent_name=agent_name, **default_kwargs)
+            # Copy the default kwargs to avoid modifying the original dict
+            agent_kwargs = default_kwargs.copy()
+            if "plugins" in default_kwargs:
+                plugins = {}
+                for plugin_name, plugin_config in default_kwargs["plugins"].items():
+                    if plugin_name in self._name_to_plugin_class:
+                        plugin_class = self._name_to_plugin_class[plugin_name]
+                        plugins[plugin_name] = plugin_class(**plugin_config)
+                    else:
+                        raise ValueError(f"Invalid plugin name: {plugin_name}")
+                agent_kwargs["plugins"] = plugins
+
+            return Agent(agent_name=agent_name, **agent_kwargs)
 
         with open(file_path, "r") as file:
             config_data = json.load(file)
