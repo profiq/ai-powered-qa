@@ -24,24 +24,6 @@ from ai_powered_qa.custom_plugins.playwright_plugin.only_keyboard import (
 )
 
 
-def get_min2web_data():
-    with open("data/train_0.json", "r") as file:
-        data = json.load(file)
-        blocked_websites = [
-            "instacart",  # prevents robots
-            "seatgeek",  # prevents robots
-            "ultimate-guitar",  # poorly accessible
-            "tesla",  # poorly accessible, has a lot of svg
-        ]
-        filtered_data = [
-            item for item in data if item["website"] not in blocked_websites
-        ]
-    return filtered_data
-
-
-mind2web_data = get_min2web_data()
-
-
 NAME_TO_PLUGIN_CLASS = {
     "PlaywrightPlugin": PlaywrightPlugin,
     "PlaywrightPluginHtmlPaging": PlaywrightPluginHtmlPaging,
@@ -311,11 +293,8 @@ with gr.Blocks() as demo:
 
     # MARK: new_history
     def new_history(agent):
-        item = random.choice(mind2web_data)
-        history_name = item["annotation_id"]
-        website = item["website"] + ".com"
-        task = item["confirmed_task"]
-        user_message = f"Website: {website}\nTask: {task}"
+        history_name = str(uuid4())
+        user_message = ""
         agent.reset_history([], history_name)
         session_id = str(uuid4())
         return {
