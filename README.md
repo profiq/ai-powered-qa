@@ -51,7 +51,7 @@ This command should automatically open a new browser tab with an interface with 
 The streamlit UI is a bit un-intuitive when the interaction and app state get more complex, so we've also created another UI for the agent using [Gradio](https://gradio.app). This one currently defaults to an accessibility agent, that uses only keyboard, and you can run it using
 
 ```bash
-$ poetry run gradio run web_ui_gradio.py
+$ poetry run gradio web_ui_gradio.py
 ```
 
 Both interfaces are work in progress and are continually evolving. Please submit an issue if you have any problems or ideas for improvements.

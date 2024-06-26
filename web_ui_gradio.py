@@ -37,7 +37,11 @@ agent_store = AgentStore(
 )
 
 DEFAULT_AGENT_KWARGS = {
-    "plugins": {"PlaywrightPluginOnlyVisible": {"name": "PlaywrightPluginOnlyVisible"}}
+    "plugins": {
+        "PlaywrightPluginOnlyKeyboard": NAME_TO_PLUGIN_CLASS[
+            "PlaywrightPluginOnlyKeyboard"
+        ]()
+    },
 }
 
 DEFAULT_AGENT_NAME = "only_keyboard"
