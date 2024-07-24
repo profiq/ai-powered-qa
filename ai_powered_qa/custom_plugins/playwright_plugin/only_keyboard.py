@@ -9,7 +9,7 @@ from ai_powered_qa.components.plugin import tool
 
 from . import clean_html
 from .base import PageNotLoadedException, PlaywrightPlugin
-
+from ai_powered_qa.custom_plugins.playwright_plugin.base import LinkedPage
 JS_FUNCTIONS = cleandoc(
     """
     function updateElementVisibility() {
@@ -181,6 +181,7 @@ class PlaywrightPluginOnlyKeyboard(PlaywrightPlugin):
 
     async def _press_key(self, key: str, count: int) -> str:
         page = await self._ensure_page()
+        page.on("popup", self._handle_popup)
         try:
             for _ in range(count):
                 await page.keyboard.press(key)
@@ -215,6 +216,7 @@ class PlaywrightPluginOnlyKeyboard(PlaywrightPlugin):
 
     async def _input_text(self, text: str) -> str:
         page = await self._ensure_page()
+        page.on("popup", self._handle_popup)
         try:
             await page.keyboard.type(text)
         except Exception as e:
@@ -244,13 +246,21 @@ class PlaywrightPluginOnlyKeyboard(PlaywrightPlugin):
         return html_clean
 
     async def _ensure_page(self) -> playwright.async_api.Page:
-        if not self._page:
+        if not self._pages:
             self._playwright = await playwright.async_api.async_playwright().start()
-            self._browser = await self._playwright.chromium.launch(headless=False)
-            browser_context = await self._browser.new_context()
-            await browser_context.add_init_script(JS_FUNCTIONS)
-            self._page = await browser_context.new_page()
-        return self._page
+            self._browser = await self._playwright.firefox.launch(headless=False)
+            self._browser_context = await self._browser.new_context(ignore_https_errors=True)
+            await self._browser_context.add_init_script(JS_FUNCTIONS)
+            page = await self._browser_context.new_page()
+            self._pages = LinkedPage(page)
+        if (self._pages._page.is_closed()):
+            while(self._pages._page is not None and self._pages._page.is_closed()):
+                await self._pages.set_prev()
+            if(self._pages._page is None):
+                page = await self._browser_context.new_page()
+                self._pages._page = page
+        return self._pages._page
+
 
     @staticmethod
     def _clean_html(html: str) -> str:

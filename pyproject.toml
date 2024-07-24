@@ -20,6 +20,8 @@ gradio = "^4.24.0"
 langsmith = "0.1.40"
 anthropic = "0.24.0"
 playwright-stealth = "^1.0.6"
+pydantic = "2.8"
+setuptools = "^71.1.0"
 
 
 [tool.poetry.group.dev.dependencies]

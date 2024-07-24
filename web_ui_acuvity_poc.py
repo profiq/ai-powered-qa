@@ -77,7 +77,7 @@ with st.chat_message("Assistant"):
                 st.write(json.loads(tool_call.function.arguments))
 
 
-max_iterations = 10
+max_iterations = 15
 while (
     max_iterations > 0
     and interaction.agent_response.tool_calls
